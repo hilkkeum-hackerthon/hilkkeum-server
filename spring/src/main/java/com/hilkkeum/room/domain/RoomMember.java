@@ -54,6 +54,24 @@ public class RoomMember {
 		return member;
 	}
 
+	/** 스탬프 +1 — 최대치(max)에 도달했으면 적립하지 않고 false */
+	public boolean addStamp(int max) {
+		if (stampCount >= max) {
+			return false;
+		}
+		stampCount++;
+		return true;
+	}
+
+	public boolean hasFullStamps(int max) {
+		return stampCount >= max;
+	}
+
+	/** 소원권 사용 · 만료 시 스탬프 초기화 */
+	public void resetStamps() {
+		stampCount = 0;
+	}
+
 	@PrePersist
 	void onCreate() {
 		if (joinedAt == null) {

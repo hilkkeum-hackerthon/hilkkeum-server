@@ -19,11 +19,12 @@ CREATE TABLE room_members (
     room_id      BIGINT       NOT NULL COMMENT '룸 ID',
     role         VARCHAR(10)  NOT NULL COMMENT '역할(CREATOR/JOINER)',
     member_token VARCHAR(64)  NOT NULL COMMENT '식별 토큰(앱 보안저장소 저장)',
-    stamp_count  INT          NOT NULL DEFAULT 0 COMMENT '스탬프 수(3개 차감 시 소원권 교환)',
+    stamp_count  INT          NOT NULL DEFAULT 0 COMMENT '스탬프 수(0~3). 3개가 되면 소원권 자동 발급(스탬프 유지), 소원권 사용·만료 시 0',
     joined_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '참여일시',
     PRIMARY KEY (id),
     UNIQUE KEY uk_room_members_token (member_token),
     UNIQUE KEY uk_room_members_room_role (room_id, role),
+    CONSTRAINT chk_room_members_stamp_count CHECK (stamp_count BETWEEN 0 AND 3),
     CONSTRAINT fk_room_members_room FOREIGN KEY (room_id) REFERENCES rooms (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT = '룸 멤버';
 
@@ -133,7 +134,7 @@ CREATE TABLE wish_coupons (
     owner_member_id BIGINT        NOT NULL COMMENT '보유 멤버 ID',
     issued_at        DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '발급일시(스탬프 교환 시각)',
     expires_at       DATETIME      NOT NULL COMMENT '만료일시(발급+1개월)',
-    status           VARCHAR(20)   NOT NULL DEFAULT 'AVAILABLE' COMMENT '상태(AVAILABLE/USE_REQUESTED/USED/EXPIRED)',
+    status           VARCHAR(20)   NOT NULL DEFAULT 'AVAILABLE' COMMENT '상태(AVAILABLE 사용 가능 / USED 보유자가 사용 / EXPIRED 1개월 경과) — 최대 1장 보유',
     wish_content     VARCHAR(255)  NULL     COMMENT '소원 내용',
     use_requested_at DATETIME      NULL     COMMENT '사용 요청일시',
     responded_at     DATETIME      NULL     COMMENT '상대 응답일시(승인/거절)',

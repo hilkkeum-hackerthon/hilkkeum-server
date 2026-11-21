@@ -1,11 +1,9 @@
 package com.hilkkeum.coupon.controller;
 
-import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.hilkkeum.common.auth.AuthMember;
@@ -14,13 +12,11 @@ import com.hilkkeum.common.config.OpenApiConfig;
 import com.hilkkeum.common.exception.ErrorResponse;
 import com.hilkkeum.coupon.dto.CouponResponse;
 import com.hilkkeum.coupon.dto.CouponsResponse;
-import com.hilkkeum.coupon.dto.ExchangeCouponResponse;
 import com.hilkkeum.coupon.service.CouponService;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
-import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -36,32 +32,12 @@ public class CouponController {
 
 	private final CouponService couponService;
 
-	@Operation(summary = "소원권 교환",
-		description = """
-			스탬프 3개를 보유한 사용자가 교환 버튼을 누르면 스탬프를 차감하고 소원권 1장을 발급한다. (기능명세서 4.8 / 화면 15)
-			- 스탬프가 3개일 때만 교환 가능, 사용 가능한 소원권은 최대 1장
-			- 발급일로부터 1개월 유효
-			- 스탬프 차감 · 소원권 발급은 하나의 트랜잭션, 중복 요청에도 한 장만 발급""",
-		security = @SecurityRequirement(name = OpenApiConfig.BEARER))
-	@ApiResponses({
-		@ApiResponse(responseCode = "201", description = "발급됨"),
-		@ApiResponse(responseCode = "401", description = "인증 실패",
-			content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
-		@ApiResponse(responseCode = "409", description = "스탬프 부족(NOT_ENOUGH_STAMPS) 또는 소원권 보유 중(COUPON_ALREADY_HELD)",
-			content = @Content(schema = @Schema(implementation = ErrorResponse.class),
-				examples = @ExampleObject(value = "{\"code\":\"COUPON_ALREADY_HELD\",\"message\":\"이미 사용 가능한 소원권을 보유하고 있습니다.\"}")))
-	})
-	@PostMapping("/exchange")
-	@ResponseStatus(HttpStatus.CREATED)
-	public ExchangeCouponResponse exchange(@Parameter(hidden = true) @CurrentMember AuthMember me) {
-		return couponService.exchange(me);
-	}
-
 	@Operation(summary = "소원권 조회",
 		description = """
 			현재 보유한 소원권과 만료일, 남은 유효기간을 조회한다. (기능명세서 4.8 / 화면 15)
+			- 스탬프 3개가 되면 소원권이 자동 발급됨 (교환 버튼 없음)
 			- 본인 소원권만, 사용 가능한 소원권은 최대 1장
-			- 만료 · 사용 완료된 소원권은 포함하지 않음 (조회 시점에 만료 처리)
+			- 만료 · 사용 완료된 소원권은 포함하지 않음 (조회 시점에 만료 처리, 만료 시 스탬프 0)
 			- `remainingDays`로 D-day 표시, 만료 경고 알림은 보내지 않음""",
 		security = @SecurityRequirement(name = OpenApiConfig.BEARER))
 	@ApiResponses({
@@ -76,7 +52,8 @@ public class CouponController {
 
 	@Operation(summary = "소원권 사용",
 		description = """
-			소원권 사용 버튼 → **상대 승인 없이 즉시 사용** 처리 (AVAILABLE → USED).
+			소원권 보유자가 '사용' 버튼을 누르면 **상대 승인 없이 즉시 소진** (AVAILABLE → USED).
+			- 소진되면 스탬프가 0으로 초기화되어 다시 모을 수 있음
 			- 본인 소원권만, 만료 전에만 사용 가능
 			- 중복 요청에도 한 번만 사용 처리""",
 		security = @SecurityRequirement(name = OpenApiConfig.BEARER))

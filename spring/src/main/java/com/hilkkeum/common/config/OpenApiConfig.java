@@ -41,7 +41,7 @@ public class OpenApiConfig {
 				.description("방 생성 · 입장 시 발급받은 memberToken (43자)")))
 			.tags(List.of(
 				new Tag().name("방·사용자").description("방 생성, 초대 코드 입장, 방 정보 조회"),
-				new Tag().name("스탬프·소원권").description("스탬프 조회, 소원권 교환 · 조회 · 사용(즉시)"),
+				new Tag().name("스탬프·소원권").description("스탬프 조회 · 소원권 조회 · 사용 (스탬프 3개 → 소원권 자동 발급)"),
 				new Tag().name("내부 서버연동").description(
 					"Node → Spring 전용. 외부 요청은 nginx가 차단(404), docker 내부망 `http://spring:8080`으로만 호출")));
 	}

@@ -49,10 +49,11 @@ public class InternalStampController {
 			Node가 결산을 확정한 뒤 docker 내부망으로 호출 — **외부(Swagger · 앱)에서는 nginx가 차단(404)**.
 			- DB에 확정된 승자(games.winner_player_id)와 요청 정보가 일치해야 함
 			- 게임당 1회만 적립 — 중복 요청은 `awarded=false` (재시도해도 안전)
-			- 보유량이 3개면 추가 적립하지 않음(`awarded=false`)
-			- 처리 기록과 적립은 하나의 트랜잭션, 소원권은 자동 발급하지 않음""")
+			- 3번째 스탬프를 얻고 소원권이 없으면 **소원권 자동 발급** (`couponIssued=true`, 스탬프는 3 유지)
+			- 소원권 보유 중 승리하면 스탬프 소멸(`awarded=false`)
+			- 처리 기록 · 적립 · 발급은 하나의 트랜잭션""")
 	@ApiResponses({
-		@ApiResponse(responseCode = "200", description = "처리 완료 (awarded=true 적립 / false 이미 처리 · 보유량 3개)"),
+		@ApiResponse(responseCode = "200", description = "처리 완료 (awarded=true 적립 / false 이미 처리 · 소원권 보유 중 소멸)"),
 		@ApiResponse(responseCode = "400", description = "요청 정보 누락",
 			content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
 		@ApiResponse(responseCode = "403", description = "서버 간 인증 오류 (INTERNAL_API_KEY 설정 시)",

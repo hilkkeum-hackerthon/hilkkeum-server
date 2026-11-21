@@ -29,7 +29,7 @@ public class StampController {
 
 	private final StampService stampService;
 
-	@Operation(summary = "스탬프 조회", description = "보유 스탬프(최대 3) 및 소원권 교환 가능 여부를 조회한다.",
+	@Operation(summary = "스탬프 조회", description = "보유 스탬프(최대 3)와 소원권 보유 여부를 조회한다. 스탬프 3개가 되면 소원권이 자동 발급되며, 소원권을 사용 · 만료하면 스탬프가 0이 된다.",
 		security = @SecurityRequirement(name = OpenApiConfig.BEARER))
 	@ApiResponses({
 		@ApiResponse(responseCode = "200", description = "OK"),

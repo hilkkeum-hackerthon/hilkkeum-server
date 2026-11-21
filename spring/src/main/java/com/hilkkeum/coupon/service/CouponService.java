@@ -1,6 +1,7 @@
 package com.hilkkeum.coupon.service;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -12,48 +13,31 @@ import com.hilkkeum.coupon.domain.CouponStatus;
 import com.hilkkeum.coupon.domain.WishCoupon;
 import com.hilkkeum.coupon.dto.CouponResponse;
 import com.hilkkeum.coupon.dto.CouponsResponse;
-import com.hilkkeum.coupon.dto.ExchangeCouponResponse;
 import com.hilkkeum.coupon.repository.WishCouponRepository;
 import com.hilkkeum.room.domain.RoomMember;
 import com.hilkkeum.room.repository.RoomMemberRepository;
 
 import lombok.RequiredArgsConstructor;
 
+/**
+ * 소원권 규칙
+ * - 스탬프 3개가 되면 소원권 자동 발급 (스탬프는 3개로 유지) — StampService에서 호출
+ * - 최대 1장 보유, 발급일부터 1개월 유효
+ * - 보유자 본인이 '사용'을 누르면 소진 → 스탬프 0으로 초기화
+ * - 만료되면 알림 없이 사라짐 → 스탬프 0으로 초기화
+ */
 @Service
 @RequiredArgsConstructor
 public class CouponService {
 
-	/** 소원권 1장 = 스탬프 3개 */
-	public static final int STAMPS_PER_COUPON = 3;
-
 	private final WishCouponRepository couponRepository;
 	private final RoomMemberRepository roomMemberRepository;
 
-	/**
-	 * 스탬프 3개 차감 후 소원권 1장 발급 (발급일로부터 1개월 유효).
-	 * - 사용 가능한 소원권을 이미 보유하면 409 (COUPON_ALREADY_HELD)
-	 * - 스탬프가 3개가 아니면 409 (NOT_ENOUGH_STAMPS)
-	 * - 차감은 조건부 UPDATE라 동시에 여러 번 눌러도 한 장만 발급, 차감·발급은 한 트랜잭션
-	 */
-	@Transactional
-	public ExchangeCouponResponse exchange(AuthMember me) {
-		LocalDateTime now = LocalDateTime.now();
-		couponRepository.expireOverdue(me.roomId(), now);
-		if (couponRepository.existsByOwnerMemberIdAndStatus(me.memberId(), CouponStatus.AVAILABLE)) {
-			throw new ApiException(ErrorCode.COUPON_ALREADY_HELD);
-		}
-		if (roomMemberRepository.useStamps(me.memberId(), STAMPS_PER_COUPON) != 1) {
-			throw new ApiException(ErrorCode.NOT_ENOUGH_STAMPS);
-		}
-		WishCoupon coupon = couponRepository.save(WishCoupon.issue(me.roomId(), me.memberId(), now));
-		return ExchangeCouponResponse.of(coupon, currentStamps(me.memberId()));
-	}
-
-	/** 보유 소원권(최대 1장, 만료 · 사용 완료 제외) + 남은 일수. 조회 시점에 만료 처리 */
+	/** 보유 소원권(최대 1장) + 남은 일수. 조회 시점에 만료 처리 */
 	@Transactional
 	public CouponsResponse getCoupons(AuthMember me) {
 		LocalDateTime now = LocalDateTime.now();
-		couponRepository.expireOverdue(me.roomId(), now);
+		expireOverdue(me.roomId(), now);
 
 		CouponsResponse.ActiveCoupon active = couponRepository
 			.findFirstByOwnerMemberIdAndStatusOrderByIssuedAtDesc(me.memberId(), CouponStatus.AVAILABLE)
@@ -62,16 +46,27 @@ public class CouponService {
 		return new CouponsResponse(active != null, active);
 	}
 
-	/** 사용 가능한 소원권 보유 여부 (스탬프 조회의 교환 가능 여부에 사용) */
-	@Transactional
-	public boolean hasActiveCoupon(Long memberId, Long roomId) {
-		couponRepository.expireOverdue(roomId, LocalDateTime.now());
+	/** 사용 가능한 소원권 보유 여부 — 화면 표시용 (호출 전에 expireOverdue로 만료 처리할 것) */
+	@Transactional(readOnly = true)
+	public boolean hasActiveCoupon(Long memberId) {
 		return couponRepository.existsByOwnerMemberIdAndStatus(memberId, CouponStatus.AVAILABLE);
 	}
 
+	/** 사용 가능한 소원권 보유 여부 — 자동 발급 판단용 (잠금 조회로 최신 데이터 기준) */
+	@Transactional
+	public boolean hasActiveCouponForUpdate(Long memberId) {
+		return !couponRepository.findAvailableForUpdate(memberId).isEmpty();
+	}
+
+	/** 소원권 자동 발급 — 스탬프가 가득 찼고 소원권이 없을 때 StampService가 호출 (멤버 행 잠금 상태) */
+	@Transactional
+	public WishCoupon issue(RoomMember owner, LocalDateTime now) {
+		return couponRepository.save(WishCoupon.issue(owner.getRoom().getId(), owner.getId(), now));
+	}
+
 	/**
-	 * 소원권 사용 — 상대 승인 없이 즉시 사용 처리 (AVAILABLE → USED).
-	 * 본인 소원권 · 만료 전일 때만. 동시에 여러 번 눌러도 한 번만 사용된다.
+	 * 소원권 사용 — 보유자 본인이 누르면 즉시 소진(AVAILABLE → USED)하고 스탬프를 0으로 초기화.
+	 * 만료 전에만 가능, 중복 요청에도 한 번만 처리된다.
 	 */
 	@Transactional
 	public CouponResponse use(Long couponId, AuthMember me) {
@@ -80,21 +75,32 @@ public class CouponService {
 		if (!coupon.isOwnedBy(me.memberId())) {
 			throw new ApiException(ErrorCode.NOT_COUPON_OWNER);
 		}
-		if (coupon.getStatus() == CouponStatus.EXPIRED) {
-			throw new ApiException(ErrorCode.COUPON_EXPIRED);
-		}
-		if (coupon.getStatus() == CouponStatus.AVAILABLE && coupon.isExpiredAt(now)) {
-			couponRepository.updateStatus(couponId, CouponStatus.EXPIRED);
+		if (coupon.getStatus() == CouponStatus.EXPIRED
+			|| (coupon.getStatus() == CouponStatus.AVAILABLE && coupon.isExpiredAt(now))) {
+			expireOverdue(me.roomId(), now);
 			throw new ApiException(ErrorCode.COUPON_EXPIRED);
 		}
 		if (couponRepository.use(couponId, me.memberId(), now) != 1) {
 			throw new ApiException(ErrorCode.COUPON_NOT_AVAILABLE);
 		}
+		roomMemberRepository.findByIdForUpdate(me.memberId()).ifPresent(RoomMember::resetStamps);
 		return CouponResponse.from(reload(couponId));
 	}
 
-	private int currentStamps(Long memberId) {
-		return roomMemberRepository.findById(memberId).map(RoomMember::getStampCount).orElse(0);
+	/**
+	 * 방의 만료된 소원권을 EXPIRED로 전환하고(조회 목록에서 사라짐), 주인의 스탬프를 0으로 초기화.
+	 * 별도 배치 없이 조회 · 적립 · 사용 시점에 처리한다.
+	 */
+	@Transactional
+	public void expireOverdue(Long roomId, LocalDateTime now) {
+		List<Long> owners = couponRepository.findOverdue(roomId, now).stream()
+			.filter(c -> couponRepository.expire(c.getId()) == 1)
+			.map(WishCoupon::getOwnerMemberId)
+			.distinct()
+			.toList();
+		if (!owners.isEmpty()) {
+			roomMemberRepository.resetStamps(owners);
+		}
 	}
 
 	/** 다른 방의 소원권은 존재 여부도 노출하지 않음(404) */
