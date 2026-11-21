@@ -43,10 +43,14 @@ export class GameResultService {
   ) {}
 
   async getResult(gameId: number, memberToken: string) {
-    // 게임 조회
+    // 1. 게임 조회
     const [games] =
       await this.databaseService.pool.execute<GameRow[]>(
-        `SELECT id, status, winner_player_id, decided_by
+        `SELECT
+           id,
+           status,
+           winner_player_id,
+           decided_by
          FROM games
          WHERE id = ?`,
         [gameId],
@@ -60,7 +64,7 @@ export class GameResultService {
 
     const game = games[0];
 
-    // 게임 참가자 및 선택한 벌칙 조회
+    // 2. 참가자와 선택한 벌칙 조회
     const [players] =
       await this.databaseService.pool.execute<PlayerRow[]>(
         `SELECT
@@ -90,17 +94,22 @@ export class GameResultService {
       );
     }
 
+    // 3. 게임 종료 확인
     if (game.status !== 'FINISHED') {
       throw new ConflictException(
         '아직 최종 결과가 확정되지 않았습니다.',
       );
     }
 
+    // 4. 무승부 여부 확인
+    const isDraw = game.decided_by === 'DRAW';
+
     const winner = players.find(
       (player) => player.id === game.winner_player_id,
     );
 
-    if (!winner) {
+    // 무승부가 아닌 게임은 승자가 반드시 있어야 함
+    if (!isDraw && !winner) {
       throw new ConflictException(
         '승자 정보가 아직 확정되지 않았습니다.',
       );
@@ -110,27 +119,37 @@ export class GameResultService {
       (player) => player.id !== me.id,
     );
 
-    const loser = players.find(
-      (player) => player.id !== winner.id,
-    );
+    const loser = winner
+      ? players.find(
+          (player) => player.id !== winner.id,
+        )
+      : null;
 
+    // 5. 결과 반환
     return {
       gameId: game.id,
       status: game.status,
       decidedBy: game.decided_by,
-      winnerMemberId: winner.member_id,
+
+      // 무승부면 null
+      winnerMemberId: winner?.member_id ?? null,
+
       myResult: me.result,
       partnerResult: partner?.result ?? null,
+
       players: players.map((player) => ({
         memberId: player.member_id,
         result: player.result,
       })),
+
+      // 무승부면 벌칙 없음
       penalty:
-        winner.penalty_id !== null
+        winner && winner.penalty_id !== null
           ? {
               id: winner.penalty_id,
               content: winner.penalty_content,
-              assignedToMemberId: loser?.member_id ?? null,
+              assignedToMemberId:
+                loser?.member_id ?? null,
             }
           : null,
     };
@@ -149,7 +168,8 @@ export class GameResultController {
   @ApiOperation({
     summary: '최종 게임 결과 조회',
     description:
-      '승패 확정 후 승자, 패자, 적용할 벌칙을 조회합니다.',
+      '게임 종료 후 승패와 벌칙을 조회합니다. ' +
+      '무승부(DRAW)인 경우 winnerMemberId와 penalty는 null입니다.',
   })
   @ApiOkResponse({
     schema: {
