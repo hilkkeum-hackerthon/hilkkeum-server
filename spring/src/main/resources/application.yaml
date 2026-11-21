@@ -30,16 +30,6 @@ spring:
 internal:
   api-key: ${INTERNAL_API_KEY:}
 
-# Swagger UI: /swagger-ui/index.html
-# 코드 자동 생성 문서 대신, Spring·Node 전체 API를 담은 명세 파일(static/openapi.yaml)을 보여준다.
-springdoc:
-  swagger-ui:
-    url: /openapi.yaml
-    path: /swagger-ui.html
-    display-request-duration: true
-    doc-expansion: none          # 태그만 펼친 상태로 시작 (명세서 순서 유지)
-    persist-authorization: true  # 새로고침해도 Authorize에 넣은 memberToken 유지
-
 management:
   endpoints:
     web:
