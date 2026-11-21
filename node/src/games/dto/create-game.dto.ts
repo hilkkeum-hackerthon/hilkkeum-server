@@ -1,5 +1,4 @@
-
-import { IsEnum, IsInt, Min, Max } from 'class-validator';
+﻿import { IsEnum, IsInt, Min, Max } from 'class-validator';
 
 export enum DateType {
   ONLINE = 'ONLINE',

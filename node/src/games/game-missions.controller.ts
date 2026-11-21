@@ -64,32 +64,37 @@ interface MissionRow extends RowDataPacket {
   id: number;
 }
 
-
 @Injectable()
 export class GameMissionsService {
-  constructor(private readonly databaseService: DatabaseService) {}
+  constructor(
+    private readonly databaseService: DatabaseService,
+  ) {}
 
   async selectMissions(
     gameId: number,
     memberToken: string,
     dto: SelectMissionsDto,
   ) {
-    const connection = await this.databaseService.pool.getConnection();
+    const connection =
+      await this.databaseService.pool.getConnection();
 
     try {
       await connection.beginTransaction();
 
-      // 게임 확인 및 동시 요청 방지
-      const [games] = await connection.execute<GameRow[]>(
-        `SELECT id, status, mission_count, date_type
-         FROM games
-         WHERE id = ?
-         FOR UPDATE`,
-        [gameId],
-      );
+      // 1. 게임 확인 및 동시 요청 방지
+      const [games] =
+        await connection.execute<GameRow[]>(
+          `SELECT id, status, mission_count, date_type
+           FROM games
+           WHERE id = ?
+           FOR UPDATE`,
+          [gameId],
+        );
 
       if (games.length === 0) {
-        throw new NotFoundException('게임을 찾을 수 없습니다.');
+        throw new NotFoundException(
+          '게임을 찾을 수 없습니다.',
+        );
       }
 
       const game = games[0];
@@ -100,16 +105,20 @@ export class GameMissionsService {
         );
       }
 
-      // 요청자가 이 게임의 참가자인지 확인
-      const [players] = await connection.execute<PlayerRow[]>(
-        `SELECT gp.id, gp.mission_selected_at
-         FROM game_players gp
-         JOIN room_members rm ON rm.id = gp.member_id
-         WHERE gp.game_id = ?
-           AND rm.member_token = ?
-         LIMIT 1`,
-        [gameId, memberToken],
-      );
+      // 2. 요청자가 해당 게임의 참가자인지 확인
+      const [players] =
+        await connection.execute<PlayerRow[]>(
+          `SELECT
+             gp.id,
+             gp.mission_selected_at
+           FROM game_players gp
+           JOIN room_members rm
+             ON rm.id = gp.member_id
+           WHERE gp.game_id = ?
+             AND rm.member_token = ?
+           LIMIT 1`,
+          [gameId, memberToken],
+        );
 
       if (players.length === 0) {
         throw new ForbiddenException(
@@ -125,33 +134,30 @@ export class GameMissionsService {
         );
       }
 
-      // 선택 개수 = 게임 설정 개수
+      // 3. 게임에서 설정한 미션 개수 검증
       if (dto.missionIds.length !== game.mission_count) {
         throw new BadRequestException(
           `미션을 정확히 ${game.mission_count}개 선택해야 합니다.`,
         );
       }
 
-      // 활성 미션 및 데이트 유형 검증
-      const placeholders = dto.missionIds.map(() => '?').join(',');
+      // 4. 선택한 미션의 유효성 및 데이트 유형 검증
+      // 테마 필터링 없이 ONLINE/OFFLINE만 검사
+      const placeholders =
+        dto.missionIds.map(() => '?').join(',');
 
-      let query = `
-        SELECT id
-        FROM missions
-        WHERE id IN (${placeholders})
-          AND date_type = ?
-          AND is_active = 1
-      `;
-
-      const params: (string | number)[] = [
-        ...dto.missionIds,
-        game.date_type,
-      ];
-
-      const [missions] = await connection.execute<MissionRow[]>(
-        query,
-        params,
-      );
+      const [missions] =
+        await connection.execute<MissionRow[]>(
+          `SELECT id
+           FROM missions
+           WHERE id IN (${placeholders})
+             AND date_type = ?
+             AND is_active = 1`,
+          [
+            ...dto.missionIds,
+            game.date_type,
+          ],
+        );
 
       if (missions.length !== dto.missionIds.length) {
         throw new BadRequestException(
@@ -159,7 +165,7 @@ export class GameMissionsService {
         );
       }
 
-      // 내 비밀 미션 저장
+      // 5. 내 비밀 미션 저장
       for (const missionId of dto.missionIds) {
         await connection.execute(
           `INSERT INTO player_missions
@@ -169,6 +175,7 @@ export class GameMissionsService {
         );
       }
 
+      // 6. 내 미션 선택 완료 기록
       await connection.execute(
         `UPDATE game_players
          SET mission_selected_at = CURRENT_TIMESTAMP
@@ -176,8 +183,7 @@ export class GameMissionsService {
         [player.id],
       );
 
-
-      // 두 사람 모두 미션과 벌칙 선택을 완료하면 게임 시작
+      // 7. 두 사람 모두 미션과 벌칙 선택을 완료하면 게임 시작
       await connection.execute(
         `UPDATE games
          SET status = 'PLAYING',
@@ -209,8 +215,13 @@ export class GameMissionsService {
     } catch (error) {
       await connection.rollback();
 
-      if ((error as { code?: string }).code === 'ER_DUP_ENTRY') {
-        throw new ConflictException('이미 선택한 미션입니다.');
+      if (
+        (error as { code?: string }).code ===
+        'ER_DUP_ENTRY'
+      ) {
+        throw new ConflictException(
+          '이미 선택한 미션입니다.',
+        );
       }
 
       throw error;
@@ -233,7 +244,8 @@ export class GameMissionsController {
   @ApiOperation({
     summary: '내 비밀 미션 선택',
     description:
-      '게임에 설정된 개수만큼 본인의 비밀 미션을 선택합니다.',
+      '게임에 설정된 개수만큼 본인의 비밀 미션을 선택합니다. ' +
+      '두 참가자가 미션과 벌칙 선택을 모두 완료하면 게임이 시작됩니다.',
   })
   @ApiParam({
     name: 'gameId',
@@ -258,7 +270,9 @@ export class GameMissionsController {
       authorization?.match(/^Bearer\s+(\S+)$/i)?.[1];
 
     if (!memberToken) {
-      throw new UnauthorizedException('멤버 토큰이 필요합니다.');
+      throw new UnauthorizedException(
+        '멤버 토큰이 필요합니다.',
+      );
     }
 
     return this.gameMissionsService.selectMissions(
