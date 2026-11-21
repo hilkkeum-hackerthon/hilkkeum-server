@@ -1,13 +1,12 @@
 name: Deploy Hilkkeum Server
 
-# main push 시 자동 배포 (테스트 → 이미지 빌드 → EC2 배포 → 헬스체크)
-# 수동 실행도 가능: GitHub → Actions → Deploy Hilkkeum Server → Run workflow
-# 자동 배포를 끄려면 아래 push 블록을 주석 처리하세요.
+# 지금은 수동 배포만 허용 (GitHub → Actions → Deploy Hilkkeum Server → Run workflow)
+# main push 자동 배포를 켜려면 아래 push 블록의 주석을 해제하세요. (테스트 → 빌드 → 배포 → 헬스체크)
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
+  # push:
+  #   branches:
+  #     - main
 
 # 연속 push 시 배포가 겹치지 않도록 하나씩 순서대로 실행
 concurrency:

@@ -46,22 +46,25 @@ jobs:
   node:
     name: Node Build
     runs-on: ubuntu-latest
-    # Node 코드가 들어오기 전에는 건너뜀
-    if: hashFiles('node/package.json') != ''
-    defaults:
-      run:
-        working-directory: node
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Node 코드가 들어오기 전에는 이후 단계를 건너뜀
+      - name: Check Node project
+        id: check
+        run: |
+          if [ -f node/package.json ]; then echo "exists=true" >> "$GITHUB_OUTPUT"; else echo "exists=false" >> "$GITHUB_OUTPUT"; echo "node/package.json 없음 → 건너뜀"; fi
+
       - name: Set up pnpm
+        if: steps.check.outputs.exists == 'true'
         uses: pnpm/action-setup@v4
         with:
           version: 10
 
       - name: Set up Node.js 22
+        if: steps.check.outputs.exists == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -69,12 +72,18 @@ jobs:
           cache-dependency-path: node/pnpm-lock.yaml
 
       - name: Install
+        if: steps.check.outputs.exists == 'true'
+        working-directory: node
         run: pnpm install --frozen-lockfile
 
       - name: Test (스크립트가 있을 때만)
+        if: steps.check.outputs.exists == 'true'
+        working-directory: node
         run: pnpm run --if-present test
 
       - name: Build
+        if: steps.check.outputs.exists == 'true'
+        working-directory: node
         run: pnpm build
 
   infra:
