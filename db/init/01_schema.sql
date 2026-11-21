@@ -19,68 +19,57 @@ CREATE TABLE room_members (
     room_id      BIGINT       NOT NULL COMMENT '룸 ID',
     role         VARCHAR(10)  NOT NULL COMMENT '역할(CREATOR/JOINER)',
     member_token VARCHAR(64)  NOT NULL COMMENT '식별 토큰(앱 보안저장소 저장)',
-    stamp_count  INT          NOT NULL DEFAULT 0 COMMENT '스탬프 수(3개 차감 시 소원권 교환)',
+    stamp_count  INT          NOT NULL DEFAULT 0 COMMENT '스탬프 수(0~3). 3개가 되면 소원권 자동 발급(스탬프 유지), 소원권 사용·만료 시 0',
     joined_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '참여일시',
     PRIMARY KEY (id),
     UNIQUE KEY uk_room_members_token (member_token),
     UNIQUE KEY uk_room_members_room_role (room_id, role),
+    CONSTRAINT chk_room_members_stamp_count CHECK (stamp_count BETWEEN 0 AND 3),
     CONSTRAINT fk_room_members_room FOREIGN KEY (room_id) REFERENCES rooms (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT = '룸 멤버';
 
-CREATE TABLE themes (
-    id          BIGINT        NOT NULL AUTO_INCREMENT COMMENT '테마 ID',
-    name        VARCHAR(50)   NOT NULL COMMENT '테마명',
-    description VARCHAR(255)  NULL     COMMENT '설명',
-    sort_order  INT           NOT NULL DEFAULT 0 COMMENT '정렬순서',
-    is_active   TINYINT(1)    NOT NULL DEFAULT 1 COMMENT '사용여부',
-    PRIMARY KEY (id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT = '테마';
-
 CREATE TABLE missions (
     id         BIGINT        NOT NULL AUTO_INCREMENT COMMENT '미션 ID',
-    theme_id   BIGINT        NOT NULL COMMENT '테마 ID',
-    date_type  VARCHAR(10)   NOT NULL COMMENT '데이트 유형(ONLINE/OFFLINE)',
+    date_type  VARCHAR(10)   NOT NULL COMMENT '데이트 유형(ONLINE/OFFLINE) — 유형별 7개 고정',
     content    VARCHAR(255)  NOT NULL COMMENT '미션 내용',
-    sort_order INT           NOT NULL DEFAULT 0 COMMENT '정렬순서',
+    sort_order INT           NOT NULL COMMENT '정렬순서(1~7)',
     is_active  TINYINT(1)    NOT NULL DEFAULT 1 COMMENT '사용여부',
     PRIMARY KEY (id),
-    KEY ix_missions_theme_date_type (theme_id, date_type),
-    CONSTRAINT fk_missions_theme FOREIGN KEY (theme_id) REFERENCES themes (id)
+    UNIQUE KEY uk_missions_date_type_order (date_type, sort_order),
+    CONSTRAINT chk_missions_date_type CHECK (date_type IN ('ONLINE', 'OFFLINE')),
+    CONSTRAINT chk_missions_sort_order CHECK (sort_order BETWEEN 1 AND 7)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT = '미션';
 
 CREATE TABLE penalties (
     id          BIGINT        NOT NULL AUTO_INCREMENT COMMENT '벌칙 ID',
-    content     VARCHAR(255)  NOT NULL COMMENT '벌칙 내용',
-    sort_order  INT           NOT NULL DEFAULT 0 COMMENT '정렬순서',
+    content     VARCHAR(255)  NOT NULL COMMENT '벌칙 내용 (온/오프라인 공통 5개)',
+    sort_order  INT           NOT NULL COMMENT '정렬순서(1~5)',
     is_active   TINYINT(1)    NOT NULL DEFAULT 1 COMMENT '사용여부',
-    PRIMARY KEY (id)
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_penalties_order (sort_order),
+    CONSTRAINT chk_penalties_sort_order CHECK (sort_order BETWEEN 1 AND 5)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT = '벌칙';
 
 CREATE TABLE games (
     id                   BIGINT       NOT NULL AUTO_INCREMENT COMMENT '게임 ID',
     room_id              BIGINT       NOT NULL COMMENT '룸 ID',
-    started_by_member_id BIGINT       NOT NULL COMMENT '라운드를 만든 방장(CREATOR) 멤버 ID — 방장만 설정 가능',
+    started_by_member_id BIGINT       NOT NULL COMMENT '게임을 시작한 방장(CREATOR) 멤버 ID — 방장만 시작 가능',
     date_type            VARCHAR(10)  NULL     COMMENT '데이트 유형(ONLINE/OFFLINE)',
-    theme_id             BIGINT       NULL     COMMENT '테마(미션 종류) ID',
     mission_count        INT          NULL     COMMENT '미션 개수(1~3, 두 사람 공통)',
-    status               VARCHAR(20)  NOT NULL DEFAULT 'WAITING' COMMENT '라운드 상태(WAITING 대기/SETTING 설정/PLAYING 진행 중/END_REQUESTED 종료 요청/SCORING 추리·채점/SETTLEMENT 결산/FINISHED 완료)',
+    status               VARCHAR(20)  NOT NULL DEFAULT 'SETTING' COMMENT '게임 상태(SETTING 설정 → PLAYING 진행 중 → GUESSING 추리·판정 → SETTLEMENT 결산(동점 가위바위보) → FINISHED 완료)',
     winner_player_id     BIGINT       NULL     COMMENT '승자 플레이어 ID',
     decided_by           VARCHAR(10)  NULL     COMMENT '승부 결정 방식(SCORE/RPS)',
     started_at           DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '시작일시',
-    end_requested_by_member_id BIGINT NULL     COMMENT '종료를 요청한 멤버 ID',
-    end_requested_at     DATETIME     NULL     COMMENT '종료 요청일시',
-    ended_at             DATETIME     NULL     COMMENT '종료 확정일시(추리/채점 시작)',
+    ended_at             DATETIME     NULL     COMMENT '종료일시 — 한 명이라도 종료를 누르면 즉시 종료(추리 단계 시작)',
     stamp_awarded_at     DATETIME     NULL     COMMENT '승자 스탬프 적립일시(중복 적립 방지)',
     created_at           DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '생성일시',
     active_room_id       BIGINT       AS (CASE WHEN status <> 'FINISHED' THEN room_id END) STORED COMMENT '진행 중 게임의 룸 ID(종료 시 NULL)',
     PRIMARY KEY (id),
     UNIQUE KEY uk_games_one_active_per_room (active_room_id),
     CONSTRAINT chk_games_mission_count CHECK (mission_count IS NULL OR mission_count BETWEEN 1 AND 3),
-    CONSTRAINT chk_games_status CHECK (status IN ('WAITING', 'SETTING', 'PLAYING', 'END_REQUESTED', 'SCORING', 'SETTLEMENT', 'FINISHED')),
+    CONSTRAINT chk_games_status CHECK (status IN ('SETTING', 'PLAYING', 'GUESSING', 'SETTLEMENT', 'FINISHED')),
     CONSTRAINT fk_games_room FOREIGN KEY (room_id) REFERENCES rooms (id),
-    CONSTRAINT fk_games_started_by FOREIGN KEY (started_by_member_id) REFERENCES room_members (id),
-    CONSTRAINT fk_games_end_requested_by FOREIGN KEY (end_requested_by_member_id) REFERENCES room_members (id),
-    CONSTRAINT fk_games_theme FOREIGN KEY (theme_id) REFERENCES themes (id)
+    CONSTRAINT fk_games_started_by FOREIGN KEY (started_by_member_id) REFERENCES room_members (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT = '게임';
 
 CREATE TABLE game_players (
@@ -91,7 +80,7 @@ CREATE TABLE game_players (
     score                INT           NULL     COMMENT '최종 점수',
     result               VARCHAR(10)   NULL     COMMENT '결과(WIN/LOSE)',
     mission_selected_at  DATETIME      NULL     COMMENT '미션 선택 완료일시',
-    score_submitted_at   DATETIME      NULL     COMMENT '채점 입력 완료일시',
+    score_submitted_at   DATETIME      NULL     COMMENT '추리 제출 완료일시',
     judged_at            DATETIME      NULL     COMMENT '추리 판정 완료일시',
     penalty_done_at      DATETIME      NULL     COMMENT '벌칙 수행일시',
     PRIMARY KEY (id),
@@ -105,13 +94,12 @@ CREATE TABLE player_missions (
     id             BIGINT      NOT NULL AUTO_INCREMENT COMMENT '선택 미션 ID',
     game_player_id BIGINT      NOT NULL COMMENT '플레이어 ID',
     mission_id     BIGINT      NOT NULL COMMENT '미션 ID',
-    is_completed   TINYINT(1)  NULL     COMMENT '수행 여부(채점 전 NULL)',
     created_at     DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '생성일시',
     PRIMARY KEY (id),
     UNIQUE KEY uk_player_missions (game_player_id, mission_id),
     CONSTRAINT fk_player_missions_player FOREIGN KEY (game_player_id) REFERENCES game_players (id),
     CONSTRAINT fk_player_missions_mission FOREIGN KEY (mission_id) REFERENCES missions (id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT = '플레이어 선택 미션';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT = '플레이어 선택 미션 (모두 수행한 것으로 간주, 상대가 추리)';
 
 CREATE TABLE guesses (
     id               BIGINT      NOT NULL AUTO_INCREMENT COMMENT '추리 ID',
@@ -146,7 +134,7 @@ CREATE TABLE wish_coupons (
     owner_member_id BIGINT        NOT NULL COMMENT '보유 멤버 ID',
     issued_at        DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '발급일시(스탬프 교환 시각)',
     expires_at       DATETIME      NOT NULL COMMENT '만료일시(발급+1개월)',
-    status           VARCHAR(20)   NOT NULL DEFAULT 'AVAILABLE' COMMENT '상태(AVAILABLE/USE_REQUESTED/USED/EXPIRED)',
+    status           VARCHAR(20)   NOT NULL DEFAULT 'AVAILABLE' COMMENT '상태(AVAILABLE 사용 가능 / USED 보유자가 사용 / EXPIRED 1개월 경과) — 최대 1장 보유',
     wish_content     VARCHAR(255)  NULL     COMMENT '소원 내용',
     use_requested_at DATETIME      NULL     COMMENT '사용 요청일시',
     responded_at     DATETIME      NULL     COMMENT '상대 응답일시(승인/거절)',

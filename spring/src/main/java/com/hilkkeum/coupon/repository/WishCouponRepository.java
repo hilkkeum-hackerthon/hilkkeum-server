@@ -2,8 +2,10 @@ package com.hilkkeum.coupon.repository;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -11,48 +13,43 @@ import org.springframework.data.repository.query.Param;
 import com.hilkkeum.coupon.domain.CouponStatus;
 import com.hilkkeum.coupon.domain.WishCoupon;
 
+import jakarta.persistence.LockModeType;
+
 /**
  * 상태 전환은 모두 "예상 상태" 조건을 건 UPDATE → 동시에 눌러도 한 번만 반영된다(반환값 1).
  */
 public interface WishCouponRepository extends JpaRepository<WishCoupon, Long> {
 
-	List<WishCoupon> findByOwnerMemberIdOrderByIssuedAtDesc(Long ownerMemberId);
+	/** 사용 가능(AVAILABLE) 소원권 — 최대 1장 보유 */
+	Optional<WishCoupon> findFirstByOwnerMemberIdAndStatusOrderByIssuedAtDesc(Long ownerMemberId, CouponStatus status);
 
-	/** 상대가 사용 요청해서 내가 승인해야 하는 소원권 */
-	@Query("select c from WishCoupon c where c.roomId = :roomId and c.ownerMemberId <> :memberId "
-		+ "and c.status = com.hilkkeum.coupon.domain.CouponStatus.USE_REQUESTED order by c.useRequestedAt")
-	List<WishCoupon> findPendingApprovals(@Param("roomId") Long roomId, @Param("memberId") Long memberId);
+	boolean existsByOwnerMemberIdAndStatus(Long ownerMemberId, CouponStatus status);
 
-	/** 방의 사용 가능 소원권 중 만료된 것을 EXPIRED로 전환 (조회 시점 만료 처리 — 배치 불필요) */
+	/**
+	 * 사용 가능 소원권을 잠금 조회(SELECT ... FOR UPDATE).
+	 * 일반 조회는 트랜잭션 시작 시점 스냅샷(REPEATABLE READ)을 읽어 동시 요청이 방금 발급한 소원권을 못 볼 수 있으므로,
+	 * 자동 발급 여부 판단에는 항상 최신 데이터를 읽는 이 조회를 사용한다.
+	 */
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	@Query("select c from WishCoupon c where c.ownerMemberId = :ownerId "
+		+ "and c.status = com.hilkkeum.coupon.domain.CouponStatus.AVAILABLE")
+	List<WishCoupon> findAvailableForUpdate(@Param("ownerId") Long ownerId);
+
+	/** 방에서 기한이 지난 사용 가능 소원권 */
+	@Query("select c from WishCoupon c where c.roomId = :roomId "
+		+ "and c.status = com.hilkkeum.coupon.domain.CouponStatus.AVAILABLE and c.expiresAt <= :now")
+	List<WishCoupon> findOverdue(@Param("roomId") Long roomId, @Param("now") LocalDateTime now);
+
+	/** AVAILABLE → EXPIRED (이미 다른 요청이 처리했으면 0) */
 	@Modifying(clearAutomatically = true, flushAutomatically = true)
 	@Query("update WishCoupon c set c.status = com.hilkkeum.coupon.domain.CouponStatus.EXPIRED "
-		+ "where c.roomId = :roomId and c.status = com.hilkkeum.coupon.domain.CouponStatus.AVAILABLE "
-		+ "and c.expiresAt <= :now")
-	int expireOverdue(@Param("roomId") Long roomId, @Param("now") LocalDateTime now);
+		+ "where c.id = :id and c.status = com.hilkkeum.coupon.domain.CouponStatus.AVAILABLE")
+	int expire(@Param("id") Long id);
 
-	/** AVAILABLE → USE_REQUESTED (본인 소원권, 만료 전일 때만) */
+	/** AVAILABLE → USED 즉시 사용 (본인 소원권, 만료 전일 때만). 상대 승인 없음 */
 	@Modifying(clearAutomatically = true, flushAutomatically = true)
-	@Query("update WishCoupon c set c.status = com.hilkkeum.coupon.domain.CouponStatus.USE_REQUESTED, "
-		+ "c.useRequestedAt = :now, c.respondedAt = null "
+	@Query("update WishCoupon c set c.status = com.hilkkeum.coupon.domain.CouponStatus.USED, c.usedAt = :now "
 		+ "where c.id = :id and c.ownerMemberId = :ownerId "
 		+ "and c.status = com.hilkkeum.coupon.domain.CouponStatus.AVAILABLE and c.expiresAt > :now")
-	int requestUse(@Param("id") Long id, @Param("ownerId") Long ownerId, @Param("now") LocalDateTime now);
-
-	/** USE_REQUESTED → USED (상대 승인) */
-	@Modifying(clearAutomatically = true, flushAutomatically = true)
-	@Query("update WishCoupon c set c.status = com.hilkkeum.coupon.domain.CouponStatus.USED, "
-		+ "c.respondedAt = :now, c.usedAt = :now "
-		+ "where c.id = :id and c.status = com.hilkkeum.coupon.domain.CouponStatus.USE_REQUESTED")
-	int approve(@Param("id") Long id, @Param("now") LocalDateTime now);
-
-	/** USE_REQUESTED → AVAILABLE (상대 거절, 다시 사용 요청 가능) */
-	@Modifying(clearAutomatically = true, flushAutomatically = true)
-	@Query("update WishCoupon c set c.status = com.hilkkeum.coupon.domain.CouponStatus.AVAILABLE, "
-		+ "c.respondedAt = :now, c.useRequestedAt = null "
-		+ "where c.id = :id and c.status = com.hilkkeum.coupon.domain.CouponStatus.USE_REQUESTED")
-	int reject(@Param("id") Long id, @Param("now") LocalDateTime now);
-
-	@Modifying(clearAutomatically = true, flushAutomatically = true)
-	@Query("update WishCoupon c set c.status = :status where c.id = :id")
-	int updateStatus(@Param("id") Long id, @Param("status") CouponStatus status);
+	int use(@Param("id") Long id, @Param("ownerId") Long ownerId, @Param("now") LocalDateTime now);
 }

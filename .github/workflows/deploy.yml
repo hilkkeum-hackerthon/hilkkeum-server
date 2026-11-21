@@ -141,6 +141,10 @@ jobs:
             $COMPOSE up -d mysql
             $COMPOSE up -d --no-deps --remove-orphans $SERVICES
 
+            # nginx 설정 변경 반영: 문법 검사 후 무중단 reload
+            docker exec hilkkeum-nginx nginx -t
+            docker exec hilkkeum-nginx nginx -s reload
+
             # 헬스체크: Spring + DB가 응답할 때까지 최대 2분 대기
             for i in $(seq 1 40); do
               if curl -sf http://localhost/health > /dev/null; then echo "health OK"; break; fi

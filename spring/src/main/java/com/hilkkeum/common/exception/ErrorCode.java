@@ -15,10 +15,13 @@ public enum ErrorCode {
 	// 공통
 	INVALID_REQUEST(HttpStatus.BAD_REQUEST, "잘못된 요청입니다."),
 	NOT_FOUND(HttpStatus.NOT_FOUND, "요청한 리소스를 찾을 수 없습니다."),
+	METHOD_NOT_ALLOWED(HttpStatus.METHOD_NOT_ALLOWED, "지원하지 않는 HTTP 메서드입니다."),
+	UNSUPPORTED_MEDIA_TYPE(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Content-Type: application/json 으로 요청해 주세요."),
+	DATA_CONFLICT(HttpStatus.CONFLICT, "요청이 현재 데이터 상태와 충돌합니다. 다시 시도해 주세요."),
 	INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 오류가 발생했습니다."),
 
 	// 인증 (memberToken)
-	MEMBER_TOKEN_MISSING(HttpStatus.UNAUTHORIZED, "memberToken 헤더가 필요합니다."),
+	MEMBER_TOKEN_MISSING(HttpStatus.UNAUTHORIZED, "Authorization: Bearer {memberToken} 헤더가 필요합니다."),
 	MEMBER_TOKEN_INVALID(HttpStatus.UNAUTHORIZED, "유효하지 않은 memberToken입니다."),
 	FORBIDDEN(HttpStatus.FORBIDDEN, "접근 권한이 없습니다."),
 
@@ -32,16 +35,14 @@ public enum ErrorCode {
 	INTERNAL_FORBIDDEN(HttpStatus.FORBIDDEN, "내부 API 인증에 실패했습니다."),
 	GAME_NOT_FOUND(HttpStatus.NOT_FOUND, "게임을 찾을 수 없습니다."),
 	MEMBER_NOT_FOUND(HttpStatus.NOT_FOUND, "멤버를 찾을 수 없습니다."),
-	WINNER_NOT_IN_GAME_ROOM(HttpStatus.BAD_REQUEST, "승자가 해당 게임의 방 참여자가 아닙니다."),
+	GAME_NOT_SETTLED(HttpStatus.CONFLICT, "결산이 확정되지 않은 게임입니다."),
+	WINNER_MISMATCH(HttpStatus.CONFLICT, "요청한 승자가 게임에 확정된 승자와 일치하지 않습니다."),
 
 	// 소원권
-	NOT_ENOUGH_STAMPS(HttpStatus.CONFLICT, "스탬프가 3개 이상 있어야 소원권으로 교환할 수 있습니다."),
 	COUPON_NOT_FOUND(HttpStatus.NOT_FOUND, "소원권을 찾을 수 없습니다."),
-	NOT_COUPON_OWNER(HttpStatus.FORBIDDEN, "본인의 소원권만 사용 요청할 수 있습니다."),
-	COUPON_NOT_AVAILABLE(HttpStatus.CONFLICT, "사용 요청할 수 없는 상태의 소원권입니다."),
-	COUPON_EXPIRED(HttpStatus.CONFLICT, "만료된 소원권입니다."),
-	CANNOT_RESPOND_OWN_COUPON(HttpStatus.FORBIDDEN, "본인의 소원권은 승인할 수 없습니다. 상대방이 승인해야 합니다."),
-	COUPON_NOT_REQUESTED(HttpStatus.CONFLICT, "사용 요청 중인 소원권이 아닙니다.");
+	NOT_COUPON_OWNER(HttpStatus.FORBIDDEN, "본인의 소원권만 사용할 수 있습니다."),
+	COUPON_NOT_AVAILABLE(HttpStatus.CONFLICT, "사용할 수 없는 상태의 소원권입니다. (이미 사용됨)"),
+	COUPON_EXPIRED(HttpStatus.CONFLICT, "만료된 소원권입니다.");
 
 	private final HttpStatus status;
 	private final String message;

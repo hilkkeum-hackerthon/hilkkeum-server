@@ -1,6 +1,7 @@
 package com.hilkkeum.common.auth;
 
 import org.springframework.core.MethodParameter;
+import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.support.WebDataBinderFactory;
@@ -16,13 +17,14 @@ import com.hilkkeum.room.repository.RoomMemberRepository;
 import lombok.RequiredArgsConstructor;
 
 /**
- * memberToken 헤더 → AuthMember 변환. (API 명세서: Header memberToken)
+ * Authorization: Bearer {memberToken} → AuthMember 변환.
+ * Spring · Node 공통 인증 방식 (팀 합의: Authorization Bearer로 통일).
  */
 @Component
 @RequiredArgsConstructor
 public class MemberTokenArgumentResolver implements HandlerMethodArgumentResolver {
 
-	public static final String HEADER_NAME = "memberToken";
+	private static final String BEARER_PREFIX = "Bearer ";
 
 	private final RoomMemberRepository roomMemberRepository;
 
@@ -35,12 +37,26 @@ public class MemberTokenArgumentResolver implements HandlerMethodArgumentResolve
 	@Override
 	public AuthMember resolveArgument(MethodParameter parameter, ModelAndViewContainer mavContainer,
 		NativeWebRequest webRequest, WebDataBinderFactory binderFactory) {
-		String token = webRequest.getHeader(HEADER_NAME);
-		if (!StringUtils.hasText(token)) {
+		String token = extractBearerToken(webRequest.getHeader(HttpHeaders.AUTHORIZATION));
+		if (token == null) {
 			throw new ApiException(ErrorCode.MEMBER_TOKEN_MISSING);
 		}
-		RoomMember member = roomMemberRepository.findByMemberToken(token.trim())
+		RoomMember member = roomMemberRepository.findByMemberToken(token)
 			.orElseThrow(() -> new ApiException(ErrorCode.MEMBER_TOKEN_INVALID));
 		return new AuthMember(member.getId(), member.getRoom().getId(), member.getRole());
+	}
+
+	/** "Bearer abc" → "abc" (Bearer 대소문자 무관). 형식이 아니면 null */
+	static String extractBearerToken(String authorization) {
+		if (!StringUtils.hasText(authorization)) {
+			return null;
+		}
+		String value = authorization.trim();
+		if (value.length() <= BEARER_PREFIX.length()
+			|| !value.regionMatches(true, 0, BEARER_PREFIX, 0, BEARER_PREFIX.length())) {
+			return null;
+		}
+		String token = value.substring(BEARER_PREFIX.length()).trim();
+		return token.isEmpty() ? null : token;
 	}
 }
