@@ -45,6 +45,15 @@ public class RoomMember {
 	@Column(name = "joined_at", nullable = false, updatable = false)
 	private LocalDateTime joinedAt;
 
+	public static RoomMember create(Room room, MemberRole role, String memberToken) {
+		RoomMember member = new RoomMember();
+		member.room = room;
+		member.role = role;
+		member.memberToken = memberToken;
+		member.stampCount = 0;
+		return member;
+	}
+
 	@PrePersist
 	void onCreate() {
 		if (joinedAt == null) {

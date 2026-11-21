@@ -38,6 +38,18 @@ public class Room {
 	@Column(name = "created_at", nullable = false, updatable = false)
 	private LocalDateTime createdAt;
 
+	/** 방 생성: 상대 입장 대기(PENDING). 초대 코드는 방이 성립되기 전까지 유효 */
+	public static Room create(String inviteCode) {
+		Room room = new Room();
+		room.inviteCode = inviteCode;
+		room.status = RoomStatus.PENDING;
+		return room;
+	}
+
+	public boolean isPending() {
+		return status == RoomStatus.PENDING;
+	}
+
 	@PrePersist
 	void onCreate() {
 		if (createdAt == null) {

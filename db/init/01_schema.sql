@@ -6,9 +6,9 @@ SET NAMES utf8mb4;
 
 CREATE TABLE rooms (
     id                BIGINT       NOT NULL AUTO_INCREMENT COMMENT '룸 ID',
-    invite_code       VARCHAR(6)   NULL     COMMENT '인증코드(6자, 연결 후 NULL)',
+    invite_code       VARCHAR(6)   NULL     COMMENT '초대 코드(6자). 방 성립 후에도 보관 → 재입력 시 "이미 사용된 코드" 안내',
     status            VARCHAR(10)  NOT NULL DEFAULT 'PENDING' COMMENT '상태(PENDING/ACTIVE/CLOSED)',
-    invite_expires_at DATETIME     NULL     COMMENT '인증코드 만료일시(생성+30분)',
+    invite_expires_at DATETIME     NULL     COMMENT '초대 코드 만료일시(미사용: 방 성립 전까지 코드 유효)',
     created_at        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '생성일시',
     PRIMARY KEY (id),
     UNIQUE KEY uk_rooms_invite_code (invite_code)
