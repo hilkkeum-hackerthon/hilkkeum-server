@@ -121,7 +121,7 @@ export class GamesService {
       }
 
       // 5. 선택한 테마가 있으면 유효성 확인
-      if (dto.themeId !== undefined) {
+      if (dto.themeId != null) {
         const [themes] = await connection.execute<IdRow[]>(
           `SELECT id
            FROM themes
