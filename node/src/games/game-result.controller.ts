@@ -84,6 +84,7 @@ export class GameResultService {
         [gameId],
       );
 
+    // 3. 요청자가 게임 참가자인지 확인
     const me = players.find(
       (player) => player.member_token === memberToken,
     );
@@ -94,27 +95,27 @@ export class GameResultService {
       );
     }
 
-    // 3. 게임 종료 확인
+    // 4. 게임 종료 여부 확인
     if (game.status !== 'FINISHED') {
       throw new ConflictException(
         '아직 최종 결과가 확정되지 않았습니다.',
       );
     }
 
-    // 4. 무승부 여부 확인
+    // 5. 무승부 여부 및 승자 확인
     const isDraw = game.decided_by === 'DRAW';
 
     const winner = players.find(
       (player) => player.id === game.winner_player_id,
     );
 
-    // 무승부가 아닌 게임은 승자가 반드시 있어야 함
     if (!isDraw && !winner) {
       throw new ConflictException(
         '승자 정보가 아직 확정되지 않았습니다.',
       );
     }
 
+    // 6. 상대방 및 패자 확인
     const partner = players.find(
       (player) => player.id !== me.id,
     );
@@ -125,13 +126,13 @@ export class GameResultService {
         )
       : null;
 
-    // 5. 결과 반환
+    // 7. 결과 반환
     return {
       gameId: game.id,
       status: game.status,
       decidedBy: game.decided_by,
 
-      // 무승부면 null
+      // 무승부면 승자 없음
       winnerMemberId: winner?.member_id ?? null,
 
       myResult: me.result,
@@ -169,25 +170,133 @@ export class GameResultController {
     summary: '최종 게임 결과 조회',
     description:
       '게임 종료 후 승패와 벌칙을 조회합니다. ' +
-      '무승부(DRAW)인 경우 winnerMemberId와 penalty는 null입니다.',
+      '정답을 맞히면 GUESS로 승패가 확정됩니다. ' +
+      '양쪽 추리가 모두 오답이면 DRAW로 종료되며, ' +
+      '양쪽 모두 벌칙이 없습니다. ' +
+      '무승부 시 양쪽 스탬프 지급은 Spring Boot 연동 대상입니다.',
   })
   @ApiOkResponse({
-    schema: {
-      example: {
-        gameId: 1,
-        status: 'FINISHED',
-        decidedBy: 'GUESS',
-        winnerMemberId: 1,
-        myResult: 'WIN',
-        partnerResult: 'LOSE',
-        players: [
-          { memberId: 1, result: 'WIN' },
-          { memberId: 2, result: 'LOSE' },
-        ],
-        penalty: {
-          id: 1,
-          content: '상대방의 장점 3가지 말하기',
-          assignedToMemberId: 2,
+    description: '최종 게임 결과 조회 성공',
+    content: {
+      'application/json': {
+        schema: {
+          type: 'object',
+          properties: {
+            gameId: {
+              type: 'integer',
+              example: 1,
+            },
+            status: {
+              type: 'string',
+              enum: ['FINISHED'],
+            },
+            decidedBy: {
+              type: 'string',
+              enum: ['GUESS', 'DRAW'],
+            },
+            winnerMemberId: {
+              type: 'integer',
+              nullable: true,
+            },
+            myResult: {
+              type: 'string',
+              enum: ['WIN', 'LOSE', 'DRAW'],
+            },
+            partnerResult: {
+              type: 'string',
+              enum: ['WIN', 'LOSE', 'DRAW'],
+              nullable: true,
+            },
+            players: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  memberId: {
+                    type: 'integer',
+                  },
+                  result: {
+                    type: 'string',
+                    enum: ['WIN', 'LOSE', 'DRAW'],
+                  },
+                },
+              },
+            },
+            penalty: {
+              type: 'object',
+              nullable: true,
+              properties: {
+                id: {
+                  type: 'integer',
+                },
+                content: {
+                  type: 'string',
+                },
+                assignedToMemberId: {
+                  type: 'integer',
+                  nullable: true,
+                },
+              },
+            },
+          },
+        },
+        examples: {
+          win: {
+            summary: '정답을 맞힌 경우 - 승리',
+            value: {
+              gameId: 1,
+              status: 'FINISHED',
+              decidedBy: 'GUESS',
+              winnerMemberId: 1,
+              myResult: 'WIN',
+              partnerResult: 'LOSE',
+              players: [
+                { memberId: 1, result: 'WIN' },
+                { memberId: 2, result: 'LOSE' },
+              ],
+              penalty: {
+                id: 1,
+                content: '상대방 칭찬 3가지 하기',
+                assignedToMemberId: 2,
+              },
+            },
+          },
+          lose: {
+            summary: '상대가 정답을 맞힌 경우 - 패배',
+            value: {
+              gameId: 1,
+              status: 'FINISHED',
+              decidedBy: 'GUESS',
+              winnerMemberId: 2,
+              myResult: 'LOSE',
+              partnerResult: 'WIN',
+              players: [
+                { memberId: 1, result: 'LOSE' },
+                { memberId: 2, result: 'WIN' },
+              ],
+              penalty: {
+                id: 2,
+                content: '상대방 칭찬 3가지 하기',
+                assignedToMemberId: 1,
+              },
+            },
+          },
+          draw: {
+            summary: '양쪽 추리가 모두 오답인 경우 - 무승부',
+            value: {
+              gameId: 2,
+              status: 'FINISHED',
+              decidedBy: 'DRAW',
+              winnerMemberId: null,
+              myResult: 'DRAW',
+              partnerResult: 'DRAW',
+              players: [
+                { memberId: 1, result: 'DRAW' },
+                { memberId: 2, result: 'DRAW' },
+              ],
+              penalty: null,
+            },
+          },
         },
       },
     },
