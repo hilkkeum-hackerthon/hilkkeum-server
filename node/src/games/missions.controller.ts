@@ -3,7 +3,6 @@ import {
   Controller,
   Get,
   ParseEnumPipe,
-  ParseIntPipe,
   Query,
 } from '@nestjs/common';
 import {
@@ -24,30 +23,34 @@ interface MissionRow extends RowDataPacket {
 @ApiTags('미션')
 @Controller('missions')
 export class MissionsController {
-  constructor(private readonly databaseService: DatabaseService) {}
+  constructor(
+    private readonly databaseService: DatabaseService,
+  ) {}
 
   @Get()
   @ApiOperation({
     summary: '미션 목록 조회',
-    description: '데이트 유형에 맞는 활성 미션을 DB에서 조회합니다.',
+    description:
+      'ONLINE 또는 OFFLINE 유형에 맞는 활성 미션을 조회합니다.',
   })
   @ApiQuery({
     name: 'dateType',
     enum: DateType,
     required: true,
   })
-  @ApiQuery({
-    name: 'themeId',
-    type: Number,
-    required: false,
-  })
   @ApiOkResponse({
     description: '미션 목록 조회 성공',
     schema: {
       example: {
         missions: [
-          { id: 1, content: '평소와 다른 애칭으로 불러보기' },
-          { id: 2, content: '먼저 사진 찍자고 제안하기' },
+          {
+            id: 1,
+            content: '평소와 다른 애칭으로 불러보기',
+          },
+          {
+            id: 2,
+            content: '먼저 사진 찍자고 제안하기',
+          },
         ],
       },
     },
@@ -55,30 +58,15 @@ export class MissionsController {
   async getMissions(
     @Query('dateType', new ParseEnumPipe(DateType))
     dateType: DateType,
-
-    @Query('themeId', new ParseIntPipe({ optional: true }))
-    themeId?: number,
   ) {
-    let sql = `
-      SELECT id, content
-      FROM missions
-      WHERE date_type = ?
-        AND is_active = 1
-    `;
-
-    const params: (string | number)[] = [dateType];
-
-    if (themeId !== undefined) {
-      sql += ' AND theme_id = ?';
-      params.push(themeId);
-    }
-
-    sql += ' ORDER BY sort_order ASC, id ASC';
-
     const [missions] =
       await this.databaseService.pool.execute<MissionRow[]>(
-        sql,
-        params,
+        `SELECT id, content
+         FROM missions
+         WHERE date_type = ?
+           AND is_active = 1
+         ORDER BY sort_order ASC, id ASC`,
+        [dateType],
       );
 
     return {

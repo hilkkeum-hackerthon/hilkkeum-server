@@ -25,6 +25,10 @@ interface IdRow extends RowDataPacket {
   id: number;
 }
 
+interface CountRow extends RowDataPacket {
+  total: number | string;
+}
+
 interface GameStatusRow extends RowDataPacket {
   id: number;
   status: string;
@@ -41,26 +45,31 @@ interface GamePlayerStatusRow extends RowDataPacket {
 
 @Injectable()
 export class GamesService {
-  constructor(private readonly databaseService: DatabaseService) {}
+  constructor(
+    private readonly databaseService: DatabaseService,
+  ) {}
 
   // ============================================
-  // ① 게임 생성 및 기본 설정
+  // 1. 게임 생성 및 기본 설정
   // POST /api/v1/games
   // ============================================
   async createGame(dto: CreateGameDto, memberToken: string) {
-    const connection = await this.databaseService.pool.getConnection();
+    const connection =
+      await this.databaseService.pool.getConnection();
 
     try {
       await connection.beginTransaction();
 
       // 1. 요청자 확인
-      const [requesters] = await connection.execute<MemberRow[]>(
-        `SELECT id, role
-         FROM room_members
-         WHERE room_id = ? AND member_token = ?
-         LIMIT 1`,
-        [dto.roomId, memberToken],
-      );
+      const [requesters] =
+        await connection.execute<MemberRow[]>(
+          `SELECT id, role
+           FROM room_members
+           WHERE room_id = ?
+             AND member_token = ?
+           LIMIT 1`,
+          [dto.roomId, memberToken],
+        );
 
       if (requesters.length === 0) {
         throw new UnauthorizedException(
@@ -69,28 +78,33 @@ export class GamesService {
       }
 
       // 2. 방 상태 확인 및 잠금
-      const [rooms] = await connection.execute<RoomRow[]>(
-        `SELECT id, status
-         FROM rooms
-         WHERE id = ?
-         FOR UPDATE`,
-        [dto.roomId],
-      );
+      const [rooms] =
+        await connection.execute<RoomRow[]>(
+          `SELECT id, status
+           FROM rooms
+           WHERE id = ?
+           FOR UPDATE`,
+          [dto.roomId],
+        );
 
-      if (rooms.length === 0 || rooms[0].status !== 'ACTIVE') {
+      if (
+        rooms.length === 0 ||
+        rooms[0].status !== 'ACTIVE'
+      ) {
         throw new ConflictException(
           '게임을 시작할 수 없는 방입니다.',
         );
       }
 
       // 3. 참가자 2명 확인
-      const [members] = await connection.execute<MemberRow[]>(
-        `SELECT id, role
-         FROM room_members
-         WHERE room_id = ?
-         ORDER BY id`,
-        [dto.roomId],
-      );
+      const [members] =
+        await connection.execute<MemberRow[]>(
+          `SELECT id, role
+           FROM room_members
+           WHERE room_id = ?
+           ORDER BY id`,
+          [dto.roomId],
+        );
 
       if (members.length !== 2) {
         throw new ConflictException(
@@ -99,14 +113,15 @@ export class GamesService {
       }
 
       // 4. 진행 중인 게임 중복 확인
-      const [existingGames] = await connection.execute<IdRow[]>(
-        `SELECT id
-         FROM games
-         WHERE room_id = ?
-           AND status <> 'FINISHED'
-         LIMIT 1`,
-        [dto.roomId],
-      );
+      const [existingGames] =
+        await connection.execute<IdRow[]>(
+          `SELECT id
+           FROM games
+           WHERE room_id = ?
+             AND status <> 'FINISHED'
+           LIMIT 1`,
+          [dto.roomId],
+        );
 
       if (existingGames.length > 0) {
         throw new ConflictException(
@@ -114,47 +129,81 @@ export class GamesService {
         );
       }
 
-      // 5. 선택한 테마가 있으면 유효성 확인
-      if (dto.themeId != null) {
-        const [themes] = await connection.execute<IdRow[]>(
-          `SELECT id
-           FROM themes
-           WHERE id = ?
-             AND is_active = 1`,
-          [dto.themeId],
+      // 5. 미션 개수 및 데이트 유형 확인
+      if (
+        !['ONLINE', 'OFFLINE'].includes(dto.dateType)
+      ) {
+        throw new BadRequestException(
+          '데이트 유형은 ONLINE 또는 OFFLINE이어야 합니다.',
         );
-
-        if (themes.length === 0) {
-          throw new BadRequestException(
-            '유효하지 않은 테마입니다.',
-          );
-        }
       }
 
-      // 6. 게임 생성
-      const [result] = await connection.execute<ResultSetHeader>(
-        `INSERT INTO games
-         (
-           room_id,
-           started_by_member_id,
-           date_type,
-           theme_id,
-           mission_count,
-           status
-         )
-         VALUES (?, ?, ?, ?, ?, 'SETTING')`,
-        [
-          dto.roomId,
-          requesters[0].id,
-          dto.dateType,
-          dto.themeId ?? null,
-          dto.missionCount,
-        ],
-      );
+      if (
+        !Number.isInteger(dto.missionCount) ||
+        dto.missionCount < 1 ||
+        dto.missionCount > 3
+      ) {
+        throw new BadRequestException(
+          '미션 개수는 1~3개여야 합니다.',
+        );
+      }
+
+      // 6. 선택 가능한 미션이 충분한지 확인
+      const [missionCounts] =
+        await connection.execute<CountRow[]>(
+          `SELECT COUNT(*) AS total
+           FROM missions
+           WHERE date_type = ?
+             AND is_active = 1`,
+          [dto.dateType],
+        );
+
+      const availableMissionCount =
+        Number(missionCounts[0].total);
+
+      if (availableMissionCount < dto.missionCount) {
+        throw new ConflictException(
+          `선택 가능한 미션이 부족합니다. 현재 ${availableMissionCount}개입니다.`,
+        );
+      }
+
+      // 7. 선택 가능한 벌칙이 있는지 확인
+      const [penaltyCounts] =
+        await connection.execute<CountRow[]>(
+          `SELECT COUNT(*) AS total
+           FROM penalties
+           WHERE is_active = 1`,
+        );
+
+      if (Number(penaltyCounts[0].total) === 0) {
+        throw new ConflictException(
+          '선택 가능한 벌칙이 없습니다.',
+        );
+      }
+
+      // 8. 테마 없이 게임 생성
+      const [result] =
+        await connection.execute<ResultSetHeader>(
+          `INSERT INTO games
+           (
+             room_id,
+             started_by_member_id,
+             date_type,
+             mission_count,
+             status
+           )
+           VALUES (?, ?, ?, ?, 'SETTING')`,
+          [
+            dto.roomId,
+            requesters[0].id,
+            dto.dateType,
+            dto.missionCount,
+          ],
+        );
 
       const gameId = result.insertId;
 
-      // 7. 게임 참가자 두 명 등록
+      // 9. 두 참가자 등록
       await connection.execute(
         `INSERT INTO game_players (game_id, member_id)
          VALUES (?, ?), (?, ?)`,
@@ -166,7 +215,6 @@ export class GamesService {
         ],
       );
 
-      // 8. 모든 저장이 성공했을 때 확정
       await connection.commit();
 
       return {
@@ -179,8 +227,10 @@ export class GamesService {
     } catch (error) {
       await connection.rollback();
 
-      // DB의 중복 게임 방지 제약조건
-      if ((error as { code?: string }).code === 'ER_DUP_ENTRY') {
+      if (
+        (error as { code?: string }).code ===
+        'ER_DUP_ENTRY'
+      ) {
         throw new ConflictException(
           '이미 진행 중인 게임이 있습니다.',
         );
@@ -193,28 +243,32 @@ export class GamesService {
   }
 
   // ============================================
-  // ② 게임 상태·진행현황 조회
+  // 2. 게임 상태 및 진행 현황 조회
   // GET /api/v1/games/{gameId}
   // ============================================
-  async getGameStatus(gameId: number, memberToken: string) {
-    // 1. 요청자가 해당 게임 참가자인지 확인
-    const [games] = await this.databaseService.pool.execute<
-      GameStatusRow[]
-    >(
-      `SELECT
-         g.id,
-         g.status,
-         g.date_type,
-         g.mission_count,
-         rm.id AS member_id
-       FROM games g
-       JOIN room_members rm
-         ON rm.room_id = g.room_id
-        AND rm.member_token = ?
-       WHERE g.id = ?
-       LIMIT 1`,
-      [memberToken, gameId],
-    );
+  async getGameStatus(
+    gameId: number,
+    memberToken: string,
+  ) {
+    // 1. 게임 참가자인지 확인
+    const [games] =
+      await this.databaseService.pool.execute<
+        GameStatusRow[]
+      >(
+        `SELECT
+           g.id,
+           g.status,
+           g.date_type,
+           g.mission_count,
+           rm.id AS member_id
+         FROM games g
+         JOIN room_members rm
+           ON rm.room_id = g.room_id
+          AND rm.member_token = ?
+         WHERE g.id = ?
+         LIMIT 1`,
+        [memberToken, gameId],
+      );
 
     if (games.length === 0) {
       throw new NotFoundException(
@@ -224,30 +278,30 @@ export class GamesService {
 
     const game = games[0];
 
-    // 2. 두 참가자의 미션·벌칙 선택 상태 확인
-    const [players] = await this.databaseService.pool.execute<
-      GamePlayerStatusRow[]
-    >(
-      `SELECT
-         member_id,
-         mission_selected_at,
-         penalty_id
-       FROM game_players
-       WHERE game_id = ?`,
-      [gameId],
-    );
+    // 2. 두 참가자의 미션·벌칙 선택 상태 조회
+    const [players] =
+      await this.databaseService.pool.execute<
+        GamePlayerStatusRow[]
+      >(
+        `SELECT
+           member_id,
+           mission_selected_at,
+           penalty_id
+         FROM game_players
+         WHERE game_id = ?`,
+        [gameId],
+      );
 
-    // 3. 내 게임 참가자 정보
+    // 3. 본인과 상대방 구분
     const myPlayer = players.find(
       (player) => player.member_id === game.member_id,
     );
 
-    // 4. 상대방 게임 참가자 정보
     const partnerPlayer = players.find(
       (player) => player.member_id !== game.member_id,
     );
 
-    // 5. 미션과 벌칙을 모두 선택했는지 검사
+    // 4. 미션과 벌칙 선택 완료 여부
     const isSelectionCompleted = (
       player?: GamePlayerStatusRow,
     ): boolean => {
@@ -261,14 +315,16 @@ export class GamesService {
       );
     };
 
-    // 6. 게임 진행 상태 반환
+    // 5. 게임 상태 반환
     return {
       gameId: game.id,
       status: game.status,
       dateType: game.date_type,
       missionCount: game.mission_count,
-      mySelectionCompleted: isSelectionCompleted(myPlayer),
-      partnerSelectionCompleted: isSelectionCompleted(partnerPlayer),
+      mySelectionCompleted:
+        isSelectionCompleted(myPlayer),
+      partnerSelectionCompleted:
+        isSelectionCompleted(partnerPlayer),
     };
   }
 }
