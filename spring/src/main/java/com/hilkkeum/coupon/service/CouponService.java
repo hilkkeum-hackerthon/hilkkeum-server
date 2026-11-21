@@ -1,7 +1,6 @@
 package com.hilkkeum.coupon.service;
 
 import java.time.LocalDateTime;
-import java.util.List;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -13,6 +12,7 @@ import com.hilkkeum.coupon.domain.CouponStatus;
 import com.hilkkeum.coupon.domain.WishCoupon;
 import com.hilkkeum.coupon.dto.CouponResponse;
 import com.hilkkeum.coupon.dto.CouponsResponse;
+import com.hilkkeum.coupon.dto.ExchangeCouponResponse;
 import com.hilkkeum.coupon.repository.WishCouponRepository;
 import com.hilkkeum.room.domain.RoomMember;
 import com.hilkkeum.room.repository.RoomMemberRepository;
@@ -29,34 +29,52 @@ public class CouponService {
 	private final WishCouponRepository couponRepository;
 	private final RoomMemberRepository roomMemberRepository;
 
-	/** 스탬프 3개 차감 후 소원권 발급 (발급일로부터 1개월 유효) */
+	/**
+	 * 스탬프 3개 차감 후 소원권 1장 발급 (발급일로부터 1개월 유효).
+	 * - 사용 가능한 소원권을 이미 보유하면 409 (COUPON_ALREADY_HELD)
+	 * - 스탬프가 3개가 아니면 409 (NOT_ENOUGH_STAMPS)
+	 * - 차감은 조건부 UPDATE라 동시에 여러 번 눌러도 한 장만 발급, 차감·발급은 한 트랜잭션
+	 */
 	@Transactional
-	public CouponResponse exchange(AuthMember me) {
+	public ExchangeCouponResponse exchange(AuthMember me) {
+		LocalDateTime now = LocalDateTime.now();
+		couponRepository.expireOverdue(me.roomId(), now);
+		if (couponRepository.existsByOwnerMemberIdAndStatus(me.memberId(), CouponStatus.AVAILABLE)) {
+			throw new ApiException(ErrorCode.COUPON_ALREADY_HELD);
+		}
 		if (roomMemberRepository.useStamps(me.memberId(), STAMPS_PER_COUPON) != 1) {
 			throw new ApiException(ErrorCode.NOT_ENOUGH_STAMPS);
 		}
-		WishCoupon coupon = couponRepository.save(WishCoupon.issue(me.roomId(), me.memberId(), LocalDateTime.now()));
-		return CouponResponse.from(coupon);
+		WishCoupon coupon = couponRepository.save(WishCoupon.issue(me.roomId(), me.memberId(), now));
+		return ExchangeCouponResponse.of(coupon, currentStamps(me.memberId()));
 	}
 
-	/** 내 스탬프 · 소원권 + 내가 승인해야 할 상대의 사용 요청 (조회 시점에 만료 처리) */
+	/** 보유 소원권(최대 1장, 만료 · 사용 완료 제외) + 남은 일수. 조회 시점에 만료 처리 */
 	@Transactional
 	public CouponsResponse getCoupons(AuthMember me) {
-		couponRepository.expireOverdue(me.roomId(), LocalDateTime.now());
+		LocalDateTime now = LocalDateTime.now();
+		couponRepository.expireOverdue(me.roomId(), now);
 
-		int stampCount = roomMemberRepository.findById(me.memberId())
-			.map(RoomMember::getStampCount)
-			.orElse(0);
-		List<CouponResponse> mine = couponRepository.findByOwnerMemberIdOrderByIssuedAtDesc(me.memberId())
-			.stream().map(CouponResponse::from).toList();
-		List<CouponResponse> pending = couponRepository.findPendingApprovals(me.roomId(), me.memberId())
-			.stream().map(CouponResponse::from).toList();
-		return new CouponsResponse(stampCount, mine, pending);
+		CouponsResponse.ActiveCoupon active = couponRepository
+			.findFirstByOwnerMemberIdAndStatusOrderByIssuedAtDesc(me.memberId(), CouponStatus.AVAILABLE)
+			.map(c -> CouponsResponse.ActiveCoupon.of(c, now))
+			.orElse(null);
+		return new CouponsResponse(active != null, active);
 	}
 
-	/** 소원권 사용 버튼 → 상대에게 사용 확인 요청 (본인 소원권 · AVAILABLE · 만료 전) */
+	/** 사용 가능한 소원권 보유 여부 (스탬프 조회의 교환 가능 여부에 사용) */
 	@Transactional
-	public CouponResponse requestUse(Long couponId, AuthMember me) {
+	public boolean hasActiveCoupon(Long memberId, Long roomId) {
+		couponRepository.expireOverdue(roomId, LocalDateTime.now());
+		return couponRepository.existsByOwnerMemberIdAndStatus(memberId, CouponStatus.AVAILABLE);
+	}
+
+	/**
+	 * 소원권 사용 — 상대 승인 없이 즉시 사용 처리 (AVAILABLE → USED).
+	 * 본인 소원권 · 만료 전일 때만. 동시에 여러 번 눌러도 한 번만 사용된다.
+	 */
+	@Transactional
+	public CouponResponse use(Long couponId, AuthMember me) {
 		LocalDateTime now = LocalDateTime.now();
 		WishCoupon coupon = findInMyRoom(couponId, me);
 		if (!coupon.isOwnedBy(me.memberId())) {
@@ -69,25 +87,14 @@ public class CouponService {
 			couponRepository.updateStatus(couponId, CouponStatus.EXPIRED);
 			throw new ApiException(ErrorCode.COUPON_EXPIRED);
 		}
-		if (couponRepository.requestUse(couponId, me.memberId(), now) != 1) {
+		if (couponRepository.use(couponId, me.memberId(), now) != 1) {
 			throw new ApiException(ErrorCode.COUPON_NOT_AVAILABLE);
 		}
 		return CouponResponse.from(reload(couponId));
 	}
 
-	/** 상대의 사용 요청에 응답 — 상대만 가능, 승인하면 USED / 거절하면 AVAILABLE */
-	@Transactional
-	public CouponResponse respond(Long couponId, boolean approved, AuthMember me) {
-		WishCoupon coupon = findInMyRoom(couponId, me);
-		if (coupon.isOwnedBy(me.memberId())) {
-			throw new ApiException(ErrorCode.CANNOT_RESPOND_OWN_COUPON);
-		}
-		LocalDateTime now = LocalDateTime.now();
-		int updated = approved ? couponRepository.approve(couponId, now) : couponRepository.reject(couponId, now);
-		if (updated != 1) {
-			throw new ApiException(ErrorCode.COUPON_NOT_REQUESTED);
-		}
-		return CouponResponse.from(reload(couponId));
+	private int currentStamps(Long memberId) {
+		return roomMemberRepository.findById(memberId).map(RoomMember::getStampCount).orElse(0);
 	}
 
 	/** 다른 방의 소원권은 존재 여부도 노출하지 않음(404) */

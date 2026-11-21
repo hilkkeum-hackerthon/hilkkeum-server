@@ -1,5 +1,6 @@
 package com.hilkkeum.room.service;
 
+import java.util.List;
 import java.util.Locale;
 
 import org.springframework.stereotype.Service;
@@ -36,8 +37,7 @@ public class RoomService {
 		Room room = roomRepository.save(Room.create(newUniqueInviteCode()));
 		RoomMember creator = roomMemberRepository.save(
 			RoomMember.create(room, MemberRole.CREATOR, codeGenerator.memberToken()));
-		return new CreateRoomResponse(room.getId(), room.getInviteCode(), creator.getMemberToken(),
-			creator.getRole(), room.getStatus());
+		return new CreateRoomResponse(room.getId(), room.getInviteCode(), creator.getId(), creator.getMemberToken());
 	}
 
 	/**
@@ -60,28 +60,24 @@ public class RoomService {
 			.orElseThrow(() -> new ApiException(ErrorCode.ROOM_NOT_FOUND));
 		RoomMember joiner = roomMemberRepository.save(
 			RoomMember.create(activated, MemberRole.JOINER, codeGenerator.memberToken()));
-		return new JoinRoomResponse(activated.getId(), joiner.getMemberToken(), joiner.getRole(),
-			activated.getStatus());
+		return new JoinRoomResponse(activated.getId(), joiner.getId(), joiner.getMemberToken(), joiner.getRole());
 	}
 
-	/** 입장 상태 조회 (대기 화면 폴링 · 재접속 복구). 본인 방만 조회 가능 */
+	/**
+	 * 방 정보 조회 (대기 화면 폴링 · 재접속 복구).
+	 * 방이 없으면 404, 해당 방 참가자가 아니면 403. 상대 토큰은 응답하지 않는다.
+	 */
 	@Transactional(readOnly = true)
 	public RoomStatusResponse getStatus(Long roomId, AuthMember me) {
+		Room room = roomRepository.findById(roomId)
+			.orElseThrow(() -> new ApiException(ErrorCode.ROOM_NOT_FOUND));
 		if (!me.belongsTo(roomId)) {
 			throw new ApiException(ErrorCode.NOT_ROOM_MEMBER);
 		}
-		Room room = roomRepository.findById(roomId)
-			.orElseThrow(() -> new ApiException(ErrorCode.ROOM_NOT_FOUND));
-		int memberCount = roomMemberRepository.findByRoomId(roomId).size();
-
-		return new RoomStatusResponse(
-			room.getId(),
-			room.getStatus(),
-			room.isPending() ? room.getInviteCode() : null,
-			me.role(),
-			memberCount,
-			memberCount >= ROOM_CAPACITY
-		);
+		List<RoomStatusResponse.Member> members = roomMemberRepository.findByRoomIdOrderByIdAsc(roomId).stream()
+			.map(m -> new RoomStatusResponse.Member(m.getId(), m.getRole()))
+			.toList();
+		return new RoomStatusResponse(room.getId(), room.getStatus(), members.size(), ROOM_CAPACITY, members);
 	}
 
 	private String newUniqueInviteCode() {

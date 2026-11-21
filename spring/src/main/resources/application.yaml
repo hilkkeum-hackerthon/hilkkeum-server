@@ -30,6 +30,16 @@ spring:
 internal:
   api-key: ${INTERNAL_API_KEY:}
 
+# Swagger UI (Spring API): /swagger-ui.html · 명세 JSON: /v3/api-docs
+# Node(게임) API 문서는 Node가 /swagger 에서 별도 제공
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    display-request-duration: true
+    persist-authorization: true
+    doc-expansion: list
+  default-produces-media-type: application/json
+
 management:
   endpoints:
     web:
