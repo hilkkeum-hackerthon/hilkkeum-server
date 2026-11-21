@@ -7,11 +7,13 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.hilkkeum.common.exception.ApiException;
 import com.hilkkeum.common.exception.ErrorCode;
+import com.hilkkeum.coupon.service.CouponService;
 import com.hilkkeum.game.domain.Game;
 import com.hilkkeum.game.repository.GameRepository;
 import com.hilkkeum.room.domain.RoomMember;
 import com.hilkkeum.room.repository.RoomMemberRepository;
 import com.hilkkeum.stamp.dto.AwardStampResponse;
+import com.hilkkeum.stamp.dto.StampsResponse;
 
 import lombok.RequiredArgsConstructor;
 
@@ -44,5 +46,15 @@ public class StampService {
 			.map(RoomMember::getStampCount)
 			.orElse(0);
 		return new AwardStampResponse(gameId, winnerMemberId, awarded, stampCount);
+	}
+
+	/** 보유 스탬프 및 교환 가능 여부 */
+	@Transactional(readOnly = true)
+	public StampsResponse getStamps(Long memberId) {
+		int stampCount = roomMemberRepository.findById(memberId)
+			.map(RoomMember::getStampCount)
+			.orElse(0);
+		int perCoupon = CouponService.STAMPS_PER_COUPON;
+		return new StampsResponse(stampCount, perCoupon, stampCount >= perCoupon);
 	}
 }
