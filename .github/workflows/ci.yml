@@ -1,0 +1,98 @@
+name: CI
+
+# main 브랜치 push · PR 시 자동 실행: 테스트 · 빌드 · 배포 설정 검증
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  spring:
+    name: Spring Test & Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: spring
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: corretto
+          java-version: '17'
+          cache: gradle
+
+      - name: Test
+        run: |
+          chmod +x gradlew
+          ./gradlew test --no-daemon
+
+      - name: Build
+        run: ./gradlew bootJar -x test --no-daemon
+
+      - name: Upload test report (실패 시)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: spring-test-report
+          path: spring/build/reports/tests/test
+
+  node:
+    name: Node Build
+    runs-on: ubuntu-latest
+    # Node 코드가 들어오기 전에는 건너뜀
+    if: hashFiles('node/package.json') != ''
+    defaults:
+      run:
+        working-directory: node
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: node/pnpm-lock.yaml
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Test (스크립트가 있을 때만)
+        run: pnpm run --if-present test
+
+      - name: Build
+        run: pnpm build
+
+  infra:
+    name: Infra Config Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # compose 문법 · 변수 치환 검증 (값은 더미)
+      - name: Validate compose.prod.yaml
+        run: |
+          cp .env.prod.example .env.prod
+          docker compose --env-file .env.prod -f compose.prod.yaml config --quiet
+          echo "compose OK"
+
+      # nginx 설정 문법 검증
+      - name: Validate nginx.conf
+        run: |
+          docker run --rm -v "$PWD/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro" nginx:1.27-alpine nginx -t
