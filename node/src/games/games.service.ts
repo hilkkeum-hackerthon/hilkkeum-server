@@ -1,6 +1,5 @@
 
 import {
-  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -68,6 +67,13 @@ export class GamesService {
         );
       }
 
+      // 방장(CREATOR)만 게임을 시작할 수 있음
+      if (requesters[0].role !== 'CREATOR') {
+        throw new ForbiddenException(
+          '방장만 게임을 시작할 수 있습니다.',
+        );
+      }
+
       // 2. 방 상태 확인 및 잠금
       const [rooms] = await connection.execute<RoomRow[]>(
         `SELECT id, status
@@ -114,23 +120,6 @@ export class GamesService {
         );
       }
 
-      // 5. 선택한 테마가 있으면 유효성 확인
-      if (dto.themeId != null) {
-        const [themes] = await connection.execute<IdRow[]>(
-          `SELECT id
-           FROM themes
-           WHERE id = ?
-             AND is_active = 1`,
-          [dto.themeId],
-        );
-
-        if (themes.length === 0) {
-          throw new BadRequestException(
-            '유효하지 않은 테마입니다.',
-          );
-        }
-      }
-
       // 6. 게임 생성
       const [result] = await connection.execute<ResultSetHeader>(
         `INSERT INTO games
@@ -138,16 +127,14 @@ export class GamesService {
            room_id,
            started_by_member_id,
            date_type,
-           theme_id,
            mission_count,
            status
          )
-         VALUES (?, ?, ?, ?, ?, 'SETTING')`,
+         VALUES (?, ?, ?, ?, 'SETTING')`,
         [
           dto.roomId,
           requesters[0].id,
           dto.dateType,
-          dto.themeId ?? null,
           dto.missionCount,
         ],
       );

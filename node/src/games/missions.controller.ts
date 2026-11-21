@@ -3,7 +3,6 @@ import {
   Controller,
   Get,
   ParseEnumPipe,
-  ParseIntPipe,
   Query,
 } from '@nestjs/common';
 import {
@@ -36,11 +35,6 @@ export class MissionsController {
     enum: DateType,
     required: true,
   })
-  @ApiQuery({
-    name: 'themeId',
-    type: Number,
-    required: false,
-  })
   @ApiOkResponse({
     description: '미션 목록 조회 성공',
     schema: {
@@ -55,9 +49,6 @@ export class MissionsController {
   async getMissions(
     @Query('dateType', new ParseEnumPipe(DateType))
     dateType: DateType,
-
-    @Query('themeId', new ParseIntPipe({ optional: true }))
-    themeId?: number,
   ) {
     let sql = `
       SELECT id, content
@@ -67,11 +58,6 @@ export class MissionsController {
     `;
 
     const params: (string | number)[] = [dateType];
-
-    if (themeId !== undefined) {
-      sql += ' AND theme_id = ?';
-      params.push(themeId);
-    }
 
     sql += ' ORDER BY sort_order ASC, id ASC';
 

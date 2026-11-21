@@ -1,5 +1,5 @@
 
-import { IsEnum, IsInt, IsOptional, Min, Max } from 'class-validator';
+import { IsEnum, IsInt, Min, Max } from 'class-validator';
 
 export enum DateType {
   ONLINE = 'ONLINE',
@@ -18,9 +18,4 @@ export class CreateGameDto {
   @Min(1)
   @Max(3)
   missionCount!: number;
-
-  @IsOptional()
-  @IsInt()
-  @Min(1)
-  themeId?: number;
 }

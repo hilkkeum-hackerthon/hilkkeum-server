@@ -53,7 +53,6 @@ interface GameRow extends RowDataPacket {
   status: string;
   mission_count: number;
   date_type: string;
-  theme_id: number | null;
 }
 
 interface PlayerRow extends RowDataPacket {
@@ -82,7 +81,7 @@ export class GameMissionsService {
 
       // 게임 확인 및 동시 요청 방지
       const [games] = await connection.execute<GameRow[]>(
-        `SELECT id, status, mission_count, date_type, theme_id
+        `SELECT id, status, mission_count, date_type
          FROM games
          WHERE id = ?
          FOR UPDATE`,
@@ -148,11 +147,6 @@ export class GameMissionsService {
         ...dto.missionIds,
         game.date_type,
       ];
-
-      if (game.theme_id !== null) {
-        query += ' AND theme_id = ?';
-        params.push(game.theme_id);
-      }
 
       const [missions] = await connection.execute<MissionRow[]>(
         query,
