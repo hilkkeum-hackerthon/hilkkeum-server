@@ -1,0 +1,51 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: hilkkeum-mysql
+    environment:
+      - MYSQL_DATABASE=${DB_NAME}
+      - MYSQL_ROOT_PASSWORD=${DB_ROOT_PASSWORD}
+      - MYSQL_USER=${DB_USERNAME}
+      - MYSQL_PASSWORD=${DB_PASSWORD}
+      - TZ=Asia/Seoul
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - mysql_data:/var/lib/mysql
+      # 볼륨이 비어 있을 때(최초 1회)만 실행됨
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - hilkkeum-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+
+  server:
+    image: ${SERVER_IMAGE:-ghcr.io/${GITHUB_REPOSITORY_OWNER}/hilkkeum-server:latest}
+    container_name: hilkkeum-server
+    env_file:
+      - .env.prod
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - TZ=Asia/Seoul
+    ports:
+      - "80:3000"   # 안드로이드 앱 → http://<탄력적IP>/
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - hilkkeum-network
+    restart: unless-stopped
+
+networks:
+  hilkkeum-network:
+    driver: bridge
+
+volumes:
+  mysql_data:
