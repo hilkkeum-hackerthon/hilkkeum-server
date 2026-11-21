@@ -1,0 +1,22 @@
+# 로컬 개발용 MySQL (운영 DB와 분리, 비밀번호는 개발용 기본값)
+# 실행: docker compose -f compose.local.yaml up -d
+# 초기화(스키마 다시 적용): docker compose -f compose.local.yaml down -v && docker compose -f compose.local.yaml up -d
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: hilkkeum-mysql-local
+    environment:
+      - MYSQL_DATABASE=hilkkeum
+      - MYSQL_ROOT_PASSWORD=root
+      - MYSQL_USER=hilkkeum_user
+      - MYSQL_PASSWORD=hilkkeum_local
+      - TZ=Asia/Seoul
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_local_data:/var/lib/mysql
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+
+volumes:
+  mysql_local_data:
