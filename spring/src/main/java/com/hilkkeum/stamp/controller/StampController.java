@@ -18,7 +18,7 @@ public class StampController {
 
 	private final StampService stampService;
 
-	/** 보유 스탬프 및 교환 가능 여부 조회 (Header: memberToken) */
+	/** 보유 스탬프 및 교환 가능 여부 조회 (Header: Authorization: Bearer {memberToken}) */
 	@GetMapping
 	public StampsResponse getStamps(@CurrentMember AuthMember me) {
 		return stampService.getStamps(me.memberId());

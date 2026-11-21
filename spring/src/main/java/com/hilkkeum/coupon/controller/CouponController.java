@@ -19,7 +19,7 @@ import com.hilkkeum.coupon.service.CouponService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
-/** 모든 API: Header memberToken */
+/** 모든 API: Header Authorization: Bearer {memberToken} */
 @RestController
 @RequestMapping("/api/v1/coupons")
 @RequiredArgsConstructor

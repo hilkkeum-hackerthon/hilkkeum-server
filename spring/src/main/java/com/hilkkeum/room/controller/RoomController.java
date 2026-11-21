@@ -40,7 +40,7 @@ public class RoomController {
 		return roomService.join(request.inviteCode());
 	}
 
-	/** 입장 상태 조회 (Header: memberToken) */
+	/** 입장 상태 조회 (Header: Authorization: Bearer {memberToken}) */
 	@GetMapping("/{roomId}")
 	public RoomStatusResponse getStatus(@PathVariable Long roomId, @CurrentMember AuthMember me) {
 		return roomService.getStatus(roomId, me);

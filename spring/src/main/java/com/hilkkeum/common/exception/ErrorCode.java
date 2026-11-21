@@ -18,7 +18,7 @@ public enum ErrorCode {
 	INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 오류가 발생했습니다."),
 
 	// 인증 (memberToken)
-	MEMBER_TOKEN_MISSING(HttpStatus.UNAUTHORIZED, "memberToken 헤더가 필요합니다."),
+	MEMBER_TOKEN_MISSING(HttpStatus.UNAUTHORIZED, "Authorization: Bearer {memberToken} 헤더가 필요합니다."),
 	MEMBER_TOKEN_INVALID(HttpStatus.UNAUTHORIZED, "유효하지 않은 memberToken입니다."),
 	FORBIDDEN(HttpStatus.FORBIDDEN, "접근 권한이 없습니다."),
 

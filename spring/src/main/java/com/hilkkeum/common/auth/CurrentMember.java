@@ -6,7 +6,7 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * 컨트롤러 파라미터에 붙이면 memberToken 헤더로 인증된 멤버가 주입된다.
+ * 컨트롤러 파라미터에 붙이면 Authorization: Bearer {memberToken} 헤더로 인증된 멤버가 주입된다.
  * 헤더가 없거나 토큰이 유효하지 않으면 401.
  *
  * <pre>
