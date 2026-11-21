@@ -26,6 +26,10 @@ spring:
   jackson:
     time-zone: Asia/Seoul
 
+# 내부 API(/internal/**) 보호용 공유 키. 비워 두면 검사하지 않음(nginx 차단 + docker 내부망만으로 보호)
+internal:
+  api-key: ${INTERNAL_API_KEY:}
+
 management:
   endpoints:
     web:
