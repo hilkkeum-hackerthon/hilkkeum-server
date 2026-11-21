@@ -182,6 +182,29 @@ export class GameMissionsService {
         [player.id],
       );
 
+
+      // 두 사람 모두 미션과 벌칙 선택을 완료하면 게임 시작
+      await connection.execute(
+        `UPDATE games
+         SET status = 'PLAYING',
+             started_at = CURRENT_TIMESTAMP
+         WHERE id = ?
+           AND status = 'SETTING'
+           AND (
+             SELECT COUNT(*)
+             FROM game_players
+             WHERE game_id = ?
+           ) = 2
+           AND (
+             SELECT COUNT(*)
+             FROM game_players
+             WHERE game_id = ?
+               AND mission_selected_at IS NOT NULL
+               AND penalty_id IS NOT NULL
+           ) = 2`,
+        [gameId, gameId, gameId],
+      );
+
       await connection.commit();
 
       return {
