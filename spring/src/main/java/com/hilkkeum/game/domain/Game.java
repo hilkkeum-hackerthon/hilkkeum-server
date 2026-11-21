@@ -36,11 +36,26 @@ public class Game {
 	@Column(name = "winner_player_id", insertable = false, updatable = false)
 	private Long winnerPlayerId;
 
+	@Column(name = "decided_by", insertable = false, updatable = false)
+	private String decidedBy;
+
 	@Column(name = "stamp_awarded_at", insertable = false, updatable = false)
 	private LocalDateTime stampAwardedAt;
 
+	/** 무승부 기록값 (맞힌 개수 동일 → 벌칙 없이 두 사람 모두 스탬프) */
+	public static final String DRAW = "DRAW";
+
+	public boolean isSettled() {
+		return SETTLED_STATUSES.contains(status);
+	}
+
 	/** 결산 단계 이후이고 승자가 확정됐는지 */
 	public boolean isWinnerConfirmed() {
-		return SETTLED_STATUSES.contains(status) && winnerPlayerId != null;
+		return isSettled() && winnerPlayerId != null;
+	}
+
+	/** 결산 단계 이후이고 무승부로 확정됐는지 (승자 없음 + decided_by = DRAW) */
+	public boolean isDrawConfirmed() {
+		return isSettled() && winnerPlayerId == null && DRAW.equals(decidedBy);
 	}
 }

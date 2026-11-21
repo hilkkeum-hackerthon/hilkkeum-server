@@ -45,22 +45,30 @@ public class InternalStampController {
 
 	@Operation(summary = "스탬프 적립 연동",
 		description = """
-			게임 승자가 최종 확정되면 해당 사용자에게 스탬프 1개를 적립한다. (기능명세서 4.7 / 4.8)
+			결산이 확정되면 스탬프를 적립한다. (기능명세서 4.7 / 4.8)
 			Node가 결산을 확정한 뒤 docker 내부망으로 호출 — **외부(Swagger · 앱)에서는 nginx가 차단(404)**.
-			- DB에 확정된 승자(games.winner_player_id)와 요청 정보가 일치해야 함
-			- 게임당 1회만 적립 — 중복 요청은 `awarded=false` (재시도해도 안전)
+
+			**승리** — `{"gameId": 1, "winnerMemberId": 2}`
+			- DB에 확정된 승자(games.winner_player_id)와 요청이 일치해야 함 → 승자 1명에게 1개
+
+			**무승부(맞힌 개수 동일)** — `{"gameId": 1}` (winnerMemberId 생략)
+			- 승부를 가리지 않고 벌칙 없이 **두 사람 모두 1개**
+			- Node 기록 규칙: `status=FINISHED`, `winner_player_id=NULL`, `decided_by='DRAW'`, `game_players.result='DRAW'`
+
+			**공통 규칙**
+			- 게임당 1회만 처리 — 중복 요청은 `awarded=false` (재시도해도 안전)
 			- 3번째 스탬프를 얻고 소원권이 없으면 **소원권 자동 발급** (`couponIssued=true`, 스탬프는 3 유지)
-			- 소원권 보유 중 승리하면 스탬프 소멸(`awarded=false`)
+			- 소원권 보유 중이면 스탬프 소멸(`awarded=false`)
 			- 처리 기록 · 적립 · 발급은 하나의 트랜잭션""")
 	@ApiResponses({
-		@ApiResponse(responseCode = "200", description = "처리 완료 (awarded=true 적립 / false 이미 처리 · 소원권 보유 중 소멸)"),
-		@ApiResponse(responseCode = "400", description = "요청 정보 누락",
+		@ApiResponse(responseCode = "200", description = "처리 완료 (result=WIN이면 awards 1명, DRAW면 2명)"),
+		@ApiResponse(responseCode = "400", description = "gameId 누락",
 			content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
 		@ApiResponse(responseCode = "403", description = "서버 간 인증 오류 (INTERNAL_API_KEY 설정 시)",
 			content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
 		@ApiResponse(responseCode = "404", description = "게임 또는 승자 정보를 찾을 수 없음",
 			content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
-		@ApiResponse(responseCode = "409", description = "결산이 확정되지 않았거나(GAME_NOT_SETTLED) 승자 정보가 일치하지 않음(WINNER_MISMATCH)",
+		@ApiResponse(responseCode = "409", description = "결산 미확정(GAME_NOT_SETTLED) · 승자 불일치(WINNER_MISMATCH) · 무승부가 아님(GAME_NOT_DRAW)",
 			content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
 	})
 	@PostMapping("/award")

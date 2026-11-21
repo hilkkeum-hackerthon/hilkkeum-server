@@ -37,6 +37,7 @@ public enum ErrorCode {
 	MEMBER_NOT_FOUND(HttpStatus.NOT_FOUND, "멤버를 찾을 수 없습니다."),
 	GAME_NOT_SETTLED(HttpStatus.CONFLICT, "결산이 확정되지 않은 게임입니다."),
 	WINNER_MISMATCH(HttpStatus.CONFLICT, "요청한 승자가 게임에 확정된 승자와 일치하지 않습니다."),
+	GAME_NOT_DRAW(HttpStatus.CONFLICT, "무승부로 확정된 게임이 아닙니다. 승자가 있으면 winnerMemberId를 보내 주세요."),
 
 	// 소원권
 	COUPON_NOT_FOUND(HttpStatus.NOT_FOUND, "소원권을 찾을 수 없습니다."),

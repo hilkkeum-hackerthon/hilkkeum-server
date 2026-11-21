@@ -1,6 +1,7 @@
 package com.hilkkeum.game.repository;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -21,4 +22,9 @@ public interface GameRepository extends JpaRepository<Game, Long> {
 	@Query(value = "select gp.member_id from game_players gp where gp.id = :playerId and gp.game_id = :gameId",
 		nativeQuery = true)
 	Optional<Long> findMemberIdOfPlayer(@Param("gameId") Long gameId, @Param("playerId") Long playerId);
+
+	/** 게임에 참가한 두 사람의 room_members.id (잠금 순서를 고정하려고 오름차순) */
+	@Query(value = "select gp.member_id from game_players gp where gp.game_id = :gameId order by gp.member_id",
+		nativeQuery = true)
+	List<Long> findMemberIdsOfGame(@Param("gameId") Long gameId);
 }
