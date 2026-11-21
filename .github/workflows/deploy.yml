@@ -1,12 +1,16 @@
 name: Deploy Hilkkeum Server
 
-# 지금은 수동 배포만 허용 (GitHub → Actions → Deploy Hilkkeum Server → Run workflow)
-# main push 자동 배포를 켜려면 아래 push 블록의 주석을 해제하세요. (테스트 → 빌드 → 배포 → 헬스체크)
+# main push 시 자동 배포 (테스트 → 빌드 → 배포 → 헬스체크)
+# 수동 배포도 가능: GitHub → Actions → Deploy Hilkkeum Server → Run workflow
 on:
+  push:
+    branches:
+      - main
+    # 문서만 바뀐 push는 배포하지 않음
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
   workflow_dispatch:
-  # push:
-  #   branches:
-  #     - main
 
 # 연속 push 시 배포가 겹치지 않도록 하나씩 순서대로 실행
 concurrency:
