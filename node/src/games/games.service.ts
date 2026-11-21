@@ -68,12 +68,6 @@ export class GamesService {
         );
       }
 
-      if (requesters[0].role !== 'CREATOR') {
-        throw new ForbiddenException(
-          '방장만 게임을 생성할 수 있습니다.',
-        );
-      }
-
       // 2. 방 상태 확인 및 잠금
       const [rooms] = await connection.execute<RoomRow[]>(
         `SELECT id, status
