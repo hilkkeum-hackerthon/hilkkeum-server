@@ -56,7 +56,7 @@ CREATE TABLE games (
     started_by_member_id BIGINT       NOT NULL COMMENT '게임을 시작한 방장(CREATOR) 멤버 ID — 방장만 시작 가능',
     date_type            VARCHAR(10)  NULL     COMMENT '데이트 유형(ONLINE/OFFLINE)',
     mission_count        INT          NULL     COMMENT '미션 개수(1~3, 두 사람 공통)',
-    status               VARCHAR(20)  NOT NULL DEFAULT 'SETTING' COMMENT '게임 상태(SETTING 설정 → PLAYING 진행 중 → GUESSING 추리·판정 → SETTLEMENT 결산(동점 가위바위보) → FINISHED 완료)',
+    status               VARCHAR(20)  NOT NULL DEFAULT 'SETTING' COMMENT '게임 상태(SETTING 설정 → PLAYING 진행 중 → GUESSING 추리·판정 → SETTLEMENT 결산 → FINISHED 완료)',
     winner_player_id     BIGINT       NULL     COMMENT '승자 플레이어 ID',
     decided_by           VARCHAR(10)  NULL     COMMENT '승부 결정 방식(GUESS 맞힌 수 비교 승리 / DRAW 무승부 — 맞힌 개수 동일, 벌칙 없이 두 사람 모두 스탬프)',
     started_at           DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '시작일시',
@@ -114,19 +114,6 @@ CREATE TABLE guesses (
     CONSTRAINT fk_guesses_writer FOREIGN KEY (writer_player_id) REFERENCES game_players (id),
     CONSTRAINT fk_guesses_target FOREIGN KEY (target_player_id) REFERENCES game_players (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT = '추리';
-
-CREATE TABLE rps_moves (
-    id             BIGINT       NOT NULL AUTO_INCREMENT COMMENT '가위바위보 ID',
-    game_id        BIGINT       NOT NULL COMMENT '게임 ID',
-    round_no       INT          NOT NULL COMMENT '판 번호(비기면 +1)',
-    game_player_id BIGINT       NOT NULL COMMENT '플레이어 ID',
-    choice         VARCHAR(10)  NOT NULL COMMENT '낸 손(ROCK/PAPER/SCISSORS)',
-    created_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '생성일시',
-    PRIMARY KEY (id),
-    UNIQUE KEY uk_rps_moves (game_id, round_no, game_player_id),
-    CONSTRAINT fk_rps_moves_game FOREIGN KEY (game_id) REFERENCES games (id),
-    CONSTRAINT fk_rps_moves_player FOREIGN KEY (game_player_id) REFERENCES game_players (id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT = '가위바위보';
 
 CREATE TABLE wish_coupons (
     id              BIGINT        NOT NULL AUTO_INCREMENT COMMENT '소원권 ID',
